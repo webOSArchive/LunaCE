@@ -350,6 +350,9 @@ private:
 	QPoint		m_dockHiddenPos;
 	
 	int m_dockOffsetFromBottom;
+	//the positive space the launcher was last sized to; used to ignore the ime's
+	// shrink and the animation that grows it back (see slotPositiveSpaceChanged)
+	QSize m_launcherAppliedSpaceSize;
 	int m_oldDockOffsetFromBottom;
 
 	Window* m_universalSearchWin;

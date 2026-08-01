@@ -1246,14 +1246,22 @@ void OverlayWindowManager::slotPositiveSpaceChangeFinished(const QRect& r)
 
 void OverlayWindowManager::slotPositiveSpaceChanged(const QRect& r)
 {
-	//while the launcher's modal ui is up with the keyboard raised (group rename,
-	// tab rename) keep the launcher at full size; those panels position themselves
-	// clear of the keyboard instead
-	LauncherObject * pLauncher = LauncherObject::primaryInstance();
-	if (pLauncher && pLauncher->modalUiShowing())
+	//The launcher does not follow the ime's positive-space changes. Its modal panels
+	// (group overlay, rename dialog) position themselves clear of the keyboard, and
+	// their dim shields must keep covering the whole launcher, so shrinking it just
+	// opened a gap. Ignoring only the shrink was not enough either: when the keyboard
+	// hides, positive space is ANIMATED back up, and applying those intermediate
+	// heights grew the launcher step by step - the visible "bounce".
+	//So: while the keyboard is up, and while the space animates back afterwards
+	// (height still below what the launcher last used), leave the launcher alone.
+	// A width change means a rotation, which must always be applied.
+	if ((r.width() == m_launcherAppliedSpaceSize.width())
+		&& (IMEController::instance()->isIMEOpened()
+			|| (r.height() < m_launcherAppliedSpaceSize.height())))
 	{
 		return;
 	}
+	m_launcherAppliedSpaceSize = r.size();
 	if (DimensionsUI::primaryInstance())
 	{
 		DimensionsUI::primaryInstance()->resize(r.width(),r.height());
