@@ -18,15 +18,21 @@ if ! novacom -l 2>/dev/null | grep -q "topaz-linux"; then
     exit 1
 fi
 
+choose_stock() {
+    LUNA_BIN="$HERE/bin/LunaSysMgr-Stock"
+    WHAT="stock webOS 3.0.5"
+    NEXT="To install LunaCE:     ./install.sh --lunace"
+}
+
+choose_lunace() {
+    LUNA_BIN="$HERE/bin/LunaSysMgr-LunaCE"
+    WHAT="LunaCE"
+    NEXT="To go back to stock:   ./install.sh --stock"
+}
+
 case "$1" in
-    --stock)
-        LUNA_BIN="$HERE/bin/LunaSysMgr-Stock"
-        WHAT="stock webOS 3.0.5"
-        ;;
-    --lunace)
-        LUNA_BIN="$HERE/bin/LunaSysMgr-LunaCE"
-        WHAT="LunaCE"
-        ;;
+    --stock)  choose_stock ;;
+    --lunace) choose_lunace ;;
     *)
         echo ""
         echo "  1) LunaCE  - app groups, renameable tabs, add and remove tabs"
@@ -35,10 +41,8 @@ case "$1" in
         printf "Which would you like to install? (1/2): "
         read -r choice
         case "$choice" in
-            2)  LUNA_BIN="$HERE/bin/LunaSysMgr-Stock"
-                WHAT="stock webOS 3.0.5" ;;
-            *)  LUNA_BIN="$HERE/bin/LunaSysMgr-LunaCE"
-                WHAT="LunaCE" ;;
+            2) choose_stock ;;
+            *) choose_lunace ;;
         esac
         ;;
 esac
@@ -65,5 +69,5 @@ echo "Restarting the launcher ..."
 novacom run -- file:///sbin/start LunaSysMgr
 
 echo ""
-echo "Done. The launcher takes about half a minute to come back."
-echo "To go back to stock:  ./install.sh --stock"
+echo "Done - $WHAT is installed. The launcher takes about half a minute to come back."
+echo "$NEXT"
