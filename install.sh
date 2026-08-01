@@ -68,14 +68,38 @@ if [ -n "$1" ]; then
     BINARY="$1"
     [ -f "$BINARY" ] || die "$BINARY does not exist."
 else
+    # Look in the obvious places, but never guess between several builds: picking
+    # the wrong one installs cleanly and looks like "nothing changed", which is a
+    # miserable thing to debug. If there is any ambiguity, ask.
+    CANDIDATES=""
+    COUNT=0
     for candidate in \
         "$HERE/bin/LunaSysMgr" \
         "$HERE/release-topaz/LunaSysMgr" \
         "$HERE"/../lunace-build/*/release-topaz/LunaSysMgr
     do
-        if [ -f "$candidate" ]; then BINARY="$candidate"; break; fi
+        if [ -f "$candidate" ]; then
+            CANDIDATES="$CANDIDATES$candidate
+"
+            COUNT=$((COUNT + 1))
+        fi
     done
-    [ -n "$BINARY" ] || die "No LunaSysMgr build found. Pass one: ./install.sh path/to/LunaSysMgr"
+
+    if [ "$COUNT" -eq 0 ]; then
+        die "No LunaSysMgr build found. Pass one: ./install.sh path/to/LunaSysMgr"
+    elif [ "$COUNT" -gt 1 ]; then
+        echo "Error: found more than one build; say which one you mean." >&2
+        echo "" >&2
+        echo "$CANDIDATES" | while read -r c; do
+            [ -n "$c" ] && printf "  %s  %s  %s\n" \
+                "$(md5sum "$c" | cut -c1-8)" \
+                "$(date -r "$c" '+%Y-%m-%d %H:%M')" "$c" >&2
+        done
+        echo "" >&2
+        echo "  ./install.sh <path>" >&2
+        exit 1
+    fi
+    BINARY=$(echo "$CANDIDATES" | head -1)
 fi
 
 case "$(file -b "$BINARY" 2>/dev/null)" in
@@ -84,6 +108,8 @@ case "$(file -b "$BINARY" 2>/dev/null)" in
 esac
 
 say "Installing: $BINARY"
+say "  built:    $(date -r "$BINARY" '+%Y-%m-%d %H:%M')"
+say "  md5:      $(md5sum "$BINARY" | cut -d' ' -f1)"
 
 # --- stage and verify before touching the running system --------------------
 
