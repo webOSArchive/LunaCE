@@ -138,15 +138,21 @@ A registered slot appears in moc's `qt_metacall` dispatch. `0` means it isn't on
 Installing
 ----------
 
-`install.sh` pushes a build to a TouchPad over novacom. It backs up the existing
-LunaSysMgr first and restarts the UI rather than rebooting:
+You do not have to build anything to try this. `bin/` carries two prebuilt binaries:
 
-    ./install.sh                       # finds a built LunaSysMgr automatically
-    ./install.sh path/to/LunaSysMgr    # installs a specific binary
-    ./install.sh --restore             # puts the most recent backup back
+* `bin/LunaSysMgr-LunaCE` — this tree, built for topaz
+* `bin/LunaSysMgr-Stock` — HP's original webOS 3.0.5 launcher, to go back
+
+`install.sh` pushes one of them over novacom and restarts the UI rather than rebooting:
+
+    ./install.sh           # asks which one you want
+    ./install.sh --lunace  # install LunaCE
+    ./install.sh --stock   # restore the stock launcher
 
 The device must be connected by USB with novacomd running. Restarting LunaSysMgr takes
 the UI down for roughly half a minute and does not preserve open cards.
+
+If you have built your own, copy it over `bin/LunaSysMgr-LunaCE` first.
 
 
 Copyright and License Information
