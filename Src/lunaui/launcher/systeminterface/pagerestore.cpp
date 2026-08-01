@@ -119,6 +119,8 @@ QVariantMap PageRestore::restorePage(const QString& pageSaveFilepath)
 	settings.beginGroup("header");
 	QString pageType = settings.value(PageSaver::SaveTagKey_PageType,QString("")).toString();
 	QString pageName = settings.value(PageSaver::SaveTagKey_PageName,QString("")).toString();
+	bool pageNameUserSet = settings.value(PageSaver::SaveTagKey_PageNameUserSet,false).toBool();
+	bool pageUserCreated = settings.value(PageSaver::SaveTagKey_PageUserCreated,false).toBool();
 	QString pageDesignator = settings.value(PageSaver::SaveTagKey_PageDesignator,QString("")).toString();
 	QString pageUid = settings.value(PageSaver::SaveTagKey_PageUid,QString("")).toString();
 	settings.endGroup();
@@ -135,6 +137,8 @@ QVariantMap PageRestore::restorePage(const QString& pageSaveFilepath)
 	{
 		rmap[PageSaver::SaveTagKey_PageName] = pageName;
 	}
+	rmap[PageSaver::SaveTagKey_PageNameUserSet] = pageNameUserSet;
+	rmap[PageSaver::SaveTagKey_PageUserCreated] = pageUserCreated;
 	if (!pageDesignator.isEmpty())
 	{
 		rmap[PageSaver::SaveTagKey_PageDesignator] = pageDesignator;
@@ -173,11 +177,12 @@ QPair<QString,quint32> PageRestore::itemPositionAsStoredOnDisk(const QString& we
 QString PageRestore::pageSaveFilepathFromPageTag(const QVariantMap& pageTag)
 {
 	//figure out the filepath based on the tag
+	// (must stay in lockstep with the filename scheme in PageSaver::saveReorderablePage;
+	//  the page name is deliberately not part of the filename)
 		return
 		( OperationalSettings::settings()->savedPagesDirectory + QString("/")
 							+ QString("page_")
 							+ pageTag[PageSaver::SaveTagKey_PageType].toString()
-							+ QString("_")+pageTag[PageSaver::SaveTagKey_PageName].toString()
 							+ QString("_")+pageTag[PageSaver::SaveTagKey_PageUid].toString()
 		);
 }
@@ -906,6 +911,21 @@ QList<WebOSAppRestoreObject> PageRestore::restoreReorderablePage(QSettings& sett
 	{
 		//TODO: TEMP: see PageSaver for WebOSApp-only restriction
 		settings.setArrayIndex(i);
+
+		//an app group record? (written by PageSaver as type=Group)
+		if (settings.value("type",QString("")).toString() == QString("Group"))
+		{
+			QStringList memberAppIds = settings.value("groupmembers",QStringList()).toStringList();
+			if (!memberAppIds.isEmpty())
+			{
+				rlist << WebOSAppRestoreObject(settings.value("groupname",QString("")).toString(),
+						memberAppIds,
+						settings.value("groupmemberlaunchids",QStringList()).toStringList(),
+						i);
+			}
+			continue;
+		}
+
 		QString appId = settings.value("id",QString("")).toString();
 		if (appId.isEmpty())
 		{

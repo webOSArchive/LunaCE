@@ -151,11 +151,16 @@ public:
 	virtual LauncherObject * owningLauncher() const;		//this is only valid if the icon is in the launcher's Limbo
 
 	QString iconLabel() const;
+	//the current main icon art (may be null); needed e.g. to composite group icon thumbnails
+	PixmapObject * mainPixmap() const { return m_qp_iconPixmap; }
 	void setIconLabel(const QString& v);
 	void resetIconLabel();
 	void setIconLabelVisibility(bool visible);
+	void setIconLabelMode(bool mode);
+	void setIconWaveScale(qreal scale);
 	void setUsePrerenderedLabel(bool usePreRendered);
 	void setLaunchFeedbackVisibility(bool visible);
+	bool launchFeedbackVisibility() const { return m_showFeedback; }
 
 
 	//if null (0) passed in, then the primary launcher instance will be used
@@ -354,6 +359,8 @@ protected:
 protected:
 
 	bool	m_showLabel;
+	bool	m_labelMode;
+	qreal	m_waveScale;
 	QString m_iconLabel;
 //	QPointer<Page> m_qp_currentOwnerPage;
 	QPointer<IconBase> m_qp_masterIcon;			//ptr to the master icon if this one is a clone, or 0 if this is a master

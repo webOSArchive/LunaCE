@@ -16,6 +16,7 @@
 *
 * LICENSE@@@ */
 
+// this file was modified by "pcworld", 0188801@gmail.com
 
 
 
@@ -583,6 +584,13 @@ static inline bool is_base64(unsigned char c) {
   return (isalnum(c) || (c == '+') || (c == '/'));
 }
 
+bool is_base64_string(std::string const& str) {
+	QString string = QString::fromStdString(str);
+	QRegExp rx("[^a-zA-Z0-9+/=]");
+	
+	return (rx.indexIn(string) == -1 && (string.length() % 4) == 0 && string.length() >= 4);
+}
+
 std::string base64_encode(unsigned char const* bytes_to_encode, unsigned int in_len) {
 	QByteArray decoded = QByteArray::fromRawData((const char *)bytes_to_encode, in_len);
 	QByteArray encoded = decoded.toBase64();
@@ -714,4 +722,10 @@ std::string & append_format(std::string & str, const char * format, ...)
 	str.append(buffer, result);
 	delete[] buffer;
 	return str;
+}
+
+volatile void *secure_memset(volatile void* dst, int c, size_t len) {
+    volatile char *buf;
+    for (buf = (volatile char*) dst;  len;  buf[--len] = c);
+    return dst;
 }

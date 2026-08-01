@@ -34,6 +34,7 @@
 #include <QGestureEvent>
 #include <QTapGesture>
 #include <QTapAndHoldGesture>
+#include <QDebug>
 
 CardWindowManagerState::CardWindowManagerState(CardWindowManager* wm)
 	: m_wm(wm)
@@ -169,9 +170,54 @@ void MinimizeState::onEntry(QEvent* event)
 		activeWin->setBoundingRect(boundingRect.width(), boundingRect.height());
 		m_wm->firstCardAlert();
 	}
+	m_wm->setGroupsStack();
 	SystemUiController::instance()->setCardWindowMaximized(false);
 	SystemUiController::instance()->setMaximizedCardWindow(0);
 }
+
+//---------------------------------------------------------------------------------------------------
+
+void GroupState::mousePressEvent(QGraphicsSceneMouseEvent* event)
+{
+    CardWindowManagerState::mousePressEvent(event);
+
+    m_wm->handleMousePressGroup(event);
+}
+
+void GroupState::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
+{
+	m_wm->handleMouseMoveGroup(event);
+}
+
+void GroupState::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
+{
+	m_wm->handleMouseReleaseGroup(event);
+}
+
+void GroupState::flickGestureEvent(QGestureEvent* event)
+{
+	m_wm->handleFlickGestureGroup(event);
+}
+
+void GroupState::tapGestureEvent(QTapGesture* event)
+{
+	m_wm->handleTapGestureGroup(event);
+}
+
+bool GroupState::handleKeyNavigation(QKeyEvent* keyEvent)
+{
+    m_wm->handleKeyNavigationGroup(keyEvent);
+    return true;
+}
+
+void GroupState::onEntry(QEvent* event)
+{
+	CardWindowManagerState::onEntry(event);
+
+	m_wm->setGroupsTab();
+	m_wm->slideAllGroups();
+}
+
 
 // --------------------------------------------------------------------------------------------------
 
@@ -400,10 +446,25 @@ void MaximizeState::focusMaximizedCardWindow(bool focus)
 
 void MaximizeState::changeCardWindow(bool next)
 {
-	if (next)
-		m_wm->switchToPrevAppMaximized();
+	if(!Preferences::instance()->getInfiniteCardCyclingPreference())
+	{
+		if (next)
+			m_wm->switchToPrevAppMaximized();
+		else
+			m_wm->switchToNextAppMaximized();
+	}
 	else
-		m_wm->switchToNextAppMaximized();
+	{
+		// Change Card Window
+		m_wm->slotMinimizeActiveCardWindow();
+		
+		if(next)
+			m_wm->switchToPrevApp();
+		else
+			m_wm->switchToNextApp();
+		
+		m_wm->slotMaximizeActiveCardWindow();
+	}
 }
 
 void MaximizeState::relayout(const QRectF& r, bool animate)
@@ -453,6 +514,7 @@ void MaximizeState::processTouchToShareTransfer(const std::string& appId)
 void MaximizeState::onEntry(QEvent* event)
 {
 	CardWindowManagerState::onEntry(event);
+	
 	CardWindow* activeWin = m_wm->activeWindow();
 	Q_ASSERT(activeWin != 0);
 
@@ -490,10 +552,6 @@ void MaximizeState::onExit(QEvent* event)
 			SystemUiController::instance()->setDirectRenderingForWindow(SystemUiController::CARD_WINDOW_MANAGER, activeWin, false);
 			activeWin->setAttachedToGroup(true);
 		}
-
-		// notify the system that we are no longer maximized
-		SystemUiController::instance()->setCardWindowMaximized(false);
-		SystemUiController::instance()->setMaximizedCardWindow(0);
 
 		m_exiting = false;
 		m_disableDirectRendering = 0;
@@ -738,4 +796,49 @@ void ReorderState::onEntry(QEvent* event)
 	}
 
 	SystemUiController::instance()->enterOrExitCardReorder(true);
+}
+
+// --------------------------------------------------------------------------------------------------
+
+void SwitchGestureState::switchCardEvent(BezelGesture* gesture)
+{
+	m_wm->handleSwitchGesture(gesture);
+}
+
+// --------------------------------------------------------------------------------------------------
+
+void MinimizeGestureState::minimizeGestureEvent(BezelGesture* gesture)
+{
+	m_wm->handleMinimizeGesture(gesture);
+}
+
+void MinimizeGestureState::onEntry(QEvent* event)
+{
+	CardWindowManagerState::onEntry(event);
+	
+	m_wm->setGroupsMinimize();
+}
+
+void MinimizeGestureState::onExit(QEvent* event)
+{
+	CardWindowManagerState::onExit(event);
+	
+	m_wm->setGroupsStack();
+}
+
+// --------------------------------------------------------------------------------------------------
+
+void SpreadGestureState::spreadGestureEvent(QPinchGesture* gesture)
+{
+	m_wm->handleSpreadGesture(gesture);
+}
+
+void SpreadGestureState::onEntry(QEvent* event)
+{
+	CardWindowManagerState::onEntry(event);
+}
+
+void SpreadGestureState::onExit(QEvent* event)
+{
+	CardWindowManagerState::onExit(event);
 }

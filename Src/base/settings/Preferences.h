@@ -61,6 +61,19 @@ public:
 
 	bool sysUiNoHomeButtonMode() const { return m_sysUiNoHomeButtonMode; }
 	bool sysUiEnableNextPrevGestures() const { return m_sysUiEnableNextPrevGestures; }
+	int sysUiGestureDetection() const { return m_sysUiGestureDetection; }
+	bool sysUiEnableAppSwitchGestures() const { return m_sysUiEnableAppSwitchGestures; }
+	bool sysUiStatusBarSlide() const { return m_sysUiStatusBarSlide; }
+	bool sysUiEnableStatusBarSearch() const { return m_sysUiEnableStatusBarSearch; }
+	bool sysUiEnableMaximizeEdges() const { return m_sysUiEnableMaximizeEdges; }
+	bool sysUiShowDeviceNameAsCarrierText() const { return m_sysUiShowDeviceNameAsCarrierText; }
+	bool sysUiUseCustomCarrierString() const { return m_sysUiUseCustomCarrierString; }
+	std::string sysUiCarrierString() { return m_sysUiCarrierString; }
+	bool sysUiEnableSpreadGesture() const { return m_sysUiEnableSpreadGesture; }
+	bool sysUiEnableMiniCards() const { return m_sysUiEnableMiniCards; }
+	bool sysUiEnableZoomGesture() const { return m_sysUiEnableZoomGesture; }
+	bool sysUiEnableWaveLauncher() const { return m_sysUiEnableWaveLauncher; }
+	bool sysUiEnableGestureDeadzone() const { return m_sysUiEnableGestureDeadzone; }
 
 	bool imeEnabled() const { return m_imeEnabled; }
 	bool pinyinEnabled() const { return m_pinyinEnabled; }
@@ -91,6 +104,11 @@ public:
 	bool isAlsEnabled() const;
 
 	bool setStringPreference(const char * keyName, const char * value);
+  bool getTabbedCardsPreference() const { return m_tabbedCardsEnabled; }
+
+  bool getInfiniteCardCyclingPreference() const { return m_infiniteCardCyclingEnabled; }
+
+	bool getShowReticleAnimationPreference() const { return m_showReticleAnimation; }
 
 Q_SIGNALS:
 
@@ -107,6 +125,7 @@ Q_SIGNALS:
 	void signalMuteSoundChanged(bool muteOn);
 	void signalAlsEnabled(bool enable);
 	void signalDeviceNameChanged(std::string deviceName);
+	void signalGetPrefsComplete();
 	
 private:
 
@@ -133,6 +152,19 @@ private:
 
 	bool m_sysUiNoHomeButtonMode;
 	bool m_sysUiEnableNextPrevGestures;
+	int m_sysUiGestureDetection;
+	bool m_sysUiEnableAppSwitchGestures;
+	bool m_sysUiStatusBarSlide;
+	bool m_sysUiEnableStatusBarSearch;
+	bool m_sysUiEnableMaximizeEdges;
+	bool m_sysUiShowDeviceNameAsCarrierText;
+	bool m_sysUiUseCustomCarrierString;
+	std::string m_sysUiCarrierString;
+	bool m_sysUiEnableSpreadGesture;
+	bool m_sysUiEnableMiniCards;
+	bool m_sysUiEnableZoomGesture;
+	bool m_sysUiEnableWaveLauncher;
+	bool m_sysUiEnableGestureDeadzone;
 
 	bool m_imeEnabled;
 	bool m_pinyinEnabled;
@@ -154,7 +186,13 @@ private:
 	
 	mutable Mutex m_mutex;
 	LSHandle* m_lsHandle;
-	LSMessageToken m_serverStatusToken;	
+	LSMessageToken m_serverStatusToken;
+
+	bool m_infiniteCardCyclingEnabled;
+	bool m_tabbedCardsEnabled;
+
+	bool m_showReticleAnimation;
+
 };
 	
 #endif /* PREFERENCES_H */

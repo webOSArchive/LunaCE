@@ -78,6 +78,8 @@ public:
 
 	virtual bool acceptIncomingIcon(IconBase * p_newIcon);
 	virtual bool releaseTransferredIcon(IconBase * p_transferredIcon);
+	
+	virtual bool tapGesture(QTapGesture *tapEvent,QGestureEvent * baseGestureEvent);
 
 	virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option=0,QWidget *widget=0);
 	virtual void paintOffscreen(QPainter *painter);
@@ -98,6 +100,19 @@ public:
 	virtual bool restoreFromSave();
 
 	void cancelLaunchFeedback();
+	
+	bool wave() const { return m_wave; }
+	void setWave(bool wave) { m_wave = wave; }
+	int wavePos() const { return m_wavePos; }
+	void setWavePos(int x) { m_wavePos = x; }
+	
+	void waveRelease();
+	
+	QList<QPointF> iconCoords() const { return m_layoutAnchorsCoords; }
+
+	//rearrange all the current items based on the current sizing
+	//PREREQUISITE: m_itemAreaXRange and m_itemsY are set correctly
+	virtual void rearrangeIcons(bool animate = false);
 
 public Q_SLOTS:
 
@@ -121,6 +136,7 @@ Q_SIGNALS:
 
 	void signalFlickAction(QPointF normVectorDirection = QPointF());
 
+	void signalHideDock();
 	void signalToggleLauncher();
 
 protected:
@@ -129,13 +145,8 @@ protected:
 	virtual bool gestureEvent(QGestureEvent *gestureEvent) { return true; }
 	virtual bool flickGesture(FlickGesture *flickEvent,QGestureEvent * baseGestureEvent);
 	virtual bool tapAndHoldGesture(QTapAndHoldGesture *tapHoldEvent,QGestureEvent * baseGestureEvent);
-	virtual bool tapGesture(QTapGesture *tapEvent,QGestureEvent * baseGestureEvent);
 
 	void setAppLaunchFeedback(IconBase* pIcon);
-
-	//rearrange all the current items based on the current sizing
-	//PREREQUISITE: m_itemAreaXRange and m_itemsY are set correctly
-	virtual void rearrangeIcons(bool animate = false);
 
 	//index >= items.size will append safely
 	virtual qint32 getCurrentIconListIndex(IconBase * p_icon);
@@ -154,6 +165,7 @@ protected Q_SLOTS:
 
 	virtual void slotIconDeleted(QObject * p);
 	void slotCancelLaunchFeedback();
+	void slotLauncherButton();
 
 	/////////////////////////// Touch and Touch FSM related /////////////////////////////////////////////
 
@@ -250,7 +262,7 @@ protected:
 	//...and this is the centerline
 	qint32					m_itemsY;
 
-	QList<qint32>			m_layoutAnchorsXcoords;
+	QList<QPointF>				m_layoutAnchorsCoords;
 	QList<QPointer<IconBase> > m_iconItems;				//must be IN ORDER, as arranged on the QL. ==> when a reorder on the QL happens, this list needs to be shuffled to match
 	typedef QList<QPointer<IconBase> >::iterator IconListIter;
 
@@ -261,6 +273,9 @@ protected:
 
 	IconBase* m_iconShowingFeedback;
 	QTimer    m_feedbackTimer;
+	
+	bool m_wave;
+	int m_wavePos;
 };
 
 #endif /* QUICKLAUNCHBAR_H_ */

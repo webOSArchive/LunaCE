@@ -16,6 +16,7 @@
 *
 * LICENSE@@@ */
 
+// this file was modified by "pcworld", 0188801@gmail.com
 
 
 
@@ -531,6 +532,7 @@ void LockWindow::resize(int width, int height)
 	if(m_statusBar) {
 		m_statusBar->resize(width, Settings::LunaSettings()->positiveSpaceTopPadding);
 		m_statusBar->setPos(0, m_bounds.y() + m_statusBar->boundingRect().height() / 2);
+		m_statusBar->setMaximizedAppTitle(false, 0, 0, false);
 		m_statusBar->update();
 	}
 
@@ -1256,7 +1258,7 @@ void LockWindow::tryUnlock()
 		return;
 
 	if (requiresPasscode()) {
-		if (EASPolicyManager::instance()->policyPending()) {
+		if (EASPolicyManager::instance()->policyPending() || Security::instance()->isPasswordOutdated()) {
 			// User needs to set up a new PIN/Password
 			changeState(StateNewPinDialog);
 
@@ -2537,7 +2539,7 @@ DashboardAlerts::DashboardAlerts()
 	kBottomPadding = 3;
 	kTopPadding = 1;
 	
-	kDashboardWidgetHeight = kDashboardItemHeight * kVisibleDashboard + m_divider.height() * (kMaxDashboardItems - 1);
+	kDashboardWidgetHeight = 480;
 	m_bounds = QRect(-(kMaxWidth/2), -(kDashboardWidgetHeight/2), kMaxWidth, kDashboardWidgetHeight);
 
 	setVisible(true);
@@ -2563,9 +2565,7 @@ void DashboardAlerts::paint(QPainter* painter, const QStyleOptionGraphicsItem* o
 	if (numSurfaces == 0)
 		return;
 
-	qreal dashboardHeight = numSurfaces * kDashboardItemHeight + (numSurfaces - 1) * m_divider.height();
-	if (numSurfaces == kMaxDashboardItems)
-		dashboardHeight -= kDashboardItemHeight/2;
+	qreal dashboardHeight = getDashboardWindowManager()->dashboardWindowContainer()->getTotalItemsHeight();
 
 	m_bounds = QRect(-(kMaxWidth/2), -(dashboardHeight)/2, kMaxWidth, dashboardHeight);
 	QRect imageBounds = m_bounds.adjusted (-kShadowWidth, -kShadowWidth -kTopPadding, kShadowWidth, kShadowWidth + kBottomPadding);

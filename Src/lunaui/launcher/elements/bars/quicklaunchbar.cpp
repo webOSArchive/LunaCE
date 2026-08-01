@@ -40,6 +40,7 @@
 #include "reorderablepage.h"
 #include "operationalsettings.h"
 #include "icongeometrysettings.h"
+#include "CardWindowManager.h"
 
 #include <QPainter>
 #include <QString>
@@ -102,6 +103,8 @@ QuickLaunchBar::QuickLaunchBar(const QRectF& geom,Quicklauncher * p_quicklaunche
 , m_iconInMotionCurrentIndex(-1)
 , m_iconShowingFeedback(0)
 , m_feedbackTimer(this)
+, m_wave(false)
+, m_wavePos(0)
 {
 
 	m_qp_backgroundTranslucent =
@@ -120,7 +123,7 @@ QuickLaunchBar::QuickLaunchBar(const QRectF& geom,Quicklauncher * p_quicklaunche
 		m_qp_launcherAccessButton->setParentItem(this);
 		m_qp_launcherAccessButton->setVisible(false);
 
-		connect(m_qp_launcherAccessButton,SIGNAL(signalContact()),this,SIGNAL(signalToggleLauncher()));
+		connect(m_qp_launcherAccessButton,SIGNAL(signalContact()),this, SLOT(slotLauncherButton()));
 	}
 	setAcceptTouchEvents(true);
 	grabGesture((Qt::GestureType) SysMgrGestureFlick);
@@ -276,7 +279,66 @@ inline void QuickLaunchBar::paintBackground(QPainter * painter)
 	//not sure if this is necessary (to save, i mean...the origin call IS necessary)
 	QPoint sbo = painter->brushOrigin();
 	painter->setBrushOrigin(m_geom.topLeft());
-	painter->fillRect(m_geom, QBrush(*(*m_qp_currentBg)));
+    painter->setRenderHint(QPainter::HighQualityAntialiasing);
+	
+	if(!m_wave) //Draw the standard 'box'
+	{
+		painter->fillRect(m_geom, QBrush(*(*m_qp_currentBg)));
+	}
+	else //Draw the 'stache
+	{
+		QPoint offset(m_wavePos,0);
+		
+		//Start at the top-middle vertex
+		QPainterPath path(QPoint(0,m_geom.top()*2.75) + offset);
+		
+		//Top Right Curve
+		path.cubicTo(
+			QPoint(m_geom.right(), m_geom.top()*2.75) + offset,
+			QPoint(m_geom.right(),m_geom.bottom()*3) + offset,
+			QPoint(m_geom.right()*2.5,m_geom.bottom()*3) + offset
+		);
+		
+		//Right hand line
+		path.lineTo(QPoint(m_geom.right()*2.5, m_geom.bottom()*4) + offset);
+		
+		//Bottom Right Curve
+		path.cubicTo(
+			QPoint(m_geom.right(),m_geom.bottom()*4) + offset,
+			QPoint(m_geom.right(),0) + offset,
+			QPoint(0,0) + offset
+		);
+		
+		//Bottom Left Curve
+		path.cubicTo(
+			QPoint(m_geom.left(),0) + offset,
+			QPoint(m_geom.left(),m_geom.bottom()*4) + offset,
+			QPoint(m_geom.left()*2.5, m_geom.bottom()*4) + offset
+		);
+		
+		//Left hand line
+		path.lineTo(QPoint(m_geom.left()*2.5,m_geom.bottom()*3) + offset);
+		
+		//Top Left Curve
+		path.cubicTo(
+			QPoint(m_geom.left(),m_geom.bottom()*3) + offset,
+			QPoint(m_geom.left(),m_geom.top()*2.75) + offset,
+			QPoint(0,m_geom.top()*2.75) + offset
+		);
+		
+		//Gradient
+		QLinearGradient linearGrad(QPointF(-m_geom.width() /2 + m_wavePos, 0), QPointF(m_geom.width()*1.5 + m_wavePos, 0));
+		linearGrad.setColorAt(0.025, QColor(0,0,0,0));
+		linearGrad.setColorAt(0.1, QColor(0,0,0,50));
+		linearGrad.setColorAt(0.25, QColor(0,0,0,160));
+		linearGrad.setColorAt(0.5, QColor(0,0,0,200));
+		linearGrad.setColorAt(0.75, QColor(0,0,0,160));
+		linearGrad.setColorAt(0.9, QColor(0,0,0,50));
+		linearGrad.setColorAt(0.975, QColor(0,0,0,0));
+     
+		painter->fillPath(path, QBrush(linearGrad));
+	}
+	
 	painter->setBrushOrigin(sbo);
 }
 
@@ -320,7 +382,8 @@ bool QuickLaunchBar::resize(const QSize& s)
 		// everything ordered symmetrically in the QL bar.
 		m_qp_launcherAccessButton->setPos(
 				m_geom.topRight()
-				+QPoint(-IconGeometrySettings::settings()->absoluteGeomSizePx.width()/2, LayoutSettings::settings()->quickLaunchBarLauncherAccessButtonOffsetPx.y() + m_qp_launcherAccessButton->geometry().height()/2));
+				+QPoint(-m_qp_launcherAccessButton->geometry().width(),
+				LayoutSettings::settings()->quickLaunchBarLauncherAccessButtonOffsetPx.y() + m_qp_launcherAccessButton->geometry().height()/2));
 
 		m_qp_launcherAccessButton->setVisible(true);
 	}
@@ -330,11 +393,10 @@ bool QuickLaunchBar::resize(const QSize& s)
 	// 2. Point(button.right,geom.top)     (if the access button is on the left edge)
 	//  + settings.quickLaunchItemAreaOffsetPx
 
-	//TODO: for now, access button is hardcoded to the right edge, so it's always (1)
-
-	m_itemAreaXrange.first = (qint32)(geometry().left()) + LayoutSettings::settings()->quickLaunchItemAreaOffsetPx.x();
-	m_itemAreaXrange.second = (qint32)(geometry().right())
-								-(qint32)(IconGeometrySettings::settings()->absoluteGeomSizePx.width());
+	//TODO: for now, access button is hardcoded to the right edge, so it's always (1)	
+	m_itemAreaXrange.first = (qint32)(geometry().left());
+	m_itemAreaXrange.second = (qint32)(geometry().right() -
+		((m_geom.right() - m_qp_launcherAccessButton->pos().x()) + (m_qp_launcherAccessButton->boundingRect().width()-1) / 2));
 
 	//the settings spec is relative to the top but m_itemsY will be used as a coordinate in ICS, so remap it so
 	// that it's center-origin based (i.e. it's in ICS)
@@ -499,7 +561,7 @@ bool QuickLaunchBar::sceneEvent(QEvent* event)
 		QGesture* g = ge->gesture(Qt::TapGesture);
 		if (g) {
 			QTapGesture* tap = static_cast<QTapGesture*>(g);
-			if (tap->state() == Qt::GestureFinished) {
+			if (tap->state() == Qt::GestureFinished && !m_wave) {
 				return tapGesture(tap,ge);
 			}
 		}
@@ -648,7 +710,6 @@ QSize QuickLaunchBar::QuickLaunchSizeFromScreenSize(int screenWidth,int screenHe
 //virtual
 void QuickLaunchBar::rearrangeIcons(bool animate)
 {
-	qint32 itemSpace = 0;
 	qint32 nItems = 0;
 	//calc the total size taken up by the items in the list
 	for (QList<QPointer<IconBase> >::iterator it = m_iconItems.begin();
@@ -660,7 +721,6 @@ void QuickLaunchBar::rearrangeIcons(bool animate)
 			continue;
 		}
 		++nItems;
-		itemSpace += (qint32)pIcon->geometry().width();
 	}
 
 	if(!nItems)
@@ -677,19 +737,12 @@ void QuickLaunchBar::rearrangeIcons(bool animate)
 		m_qp_reorderAnimationGroup = new QParallelAnimationGroup(this);
 	}
 
-	qint32 interSpace = qMax((int)0,(int)(((m_itemAreaXrange.second - m_itemAreaXrange.first)-itemSpace)/(nItems)));
-
-	m_layoutAnchorsXcoords.clear();
-	if (itemSpace == 0)
-	{
-		//nothing to do
-		return;
-	}
-
-	qint32 xoffs = 0;
+	m_layoutAnchorsCoords.clear();
+	
 	int idx=0;
 	QPointF iconPos;
-	iconPos.setY(m_itemsY);
+	qint32 barFullW = (m_itemAreaXrange.second-m_itemAreaXrange.first); //Calculate bar width
+	qint32 barHalfW = barFullW/2;
 
 	for (QList<QPointer<IconBase> >::iterator it = m_iconItems.begin();
 			it != m_iconItems.end();++it)
@@ -699,10 +752,39 @@ void QuickLaunchBar::rearrangeIcons(bool animate)
 		{
 			continue;
 		}
-		qint32 iconHalfW = (qint32)(pIcon->geometry().width()/2.0);
-
+		
+		qint32 iconX = m_itemAreaXrange.first; //Start on the left
+		iconX += (barHalfW/m_iconItems.length()); //Offset from left
+		iconX += (barFullW/m_iconItems.length()) * idx; //How far to the right should we go?
+		qint32 iconY = 0.0;
+		iconY += m_itemsY; //Start at the normal Y position
+		if(m_wave)
+		{
+			iconY += m_itemsY*1.5; //A little bit lower
+			iconY += sin((iconX - (m_wavePos + barHalfW + 32))/qreal(barHalfW/1.5)) * 96.0;
+			
+			if(m_wavePos >= iconX - ((barFullW/nItems-1)/2) && m_wavePos <= iconX + ((barFullW/nItems-1)/2)) {
+				pIcon->setLaunchFeedbackVisibility(true);
+				//pIcon->setIconLabelVisibility(true);
+				pIcon->setIconLabelMode(true);
+			}
+			else {
+				pIcon->setLaunchFeedbackVisibility(false);
+				//pIcon->setIconLabelVisibility(false);
+				pIcon->setIconLabelMode(false);
+			}
+			pIcon->setIconWaveScale((sin((iconX - (m_wavePos + barHalfW + 32))/qreal(barHalfW/1.5)) - 4)*-0.25);
+		}
+		else {
+			pIcon->setLaunchFeedbackVisibility(false);
+			//pIcon->setIconLabelVisibility(false);
+			pIcon->setIconLabelMode(false);
+			pIcon->setIconWaveScale(1.0);
+		}
+			
 		if(pIcon != m_qp_iconInMotion) {// no need to move the icon that the user is dragging around
-			iconPos.setX(m_itemAreaXrange.first+xoffs+iconHalfW);
+			iconPos.setX(iconX);
+			iconPos.setY(iconY);
 
 			if(pIcon->pos() != iconPos) {
 				if(!animate) {
@@ -717,10 +799,26 @@ void QuickLaunchBar::rearrangeIcons(bool animate)
 				}
 			}
 		}
-
-		m_layoutAnchorsXcoords << m_itemAreaXrange.first+xoffs+iconHalfW;
-		xoffs+=interSpace+pIcon->geometry().width();
+		
+		//Pipe the current position into m_layoutAnchorsCoords
+		//This determines the icon positions for tap checks
+		m_layoutAnchorsCoords << iconPos;
+		
+		idx++;
 	}
+	
+	if(m_wave)
+	{
+		qreal launcherButtonY = LayoutSettings::settings()->quickLaunchBarLauncherAccessButtonOffsetPx.y(); //Launcher icon offset
+		launcherButtonY += sin((m_qp_launcherAccessButton->pos().x() - (m_wavePos + barHalfW))/qreal(barHalfW/1.5)) * 96.0;
+		m_qp_launcherAccessButton->setPos(m_qp_launcherAccessButton->pos().x(), launcherButtonY);
+	}
+	else
+		m_qp_launcherAccessButton->setPos(
+				m_geom.topRight()
+				+QPoint(-m_qp_launcherAccessButton->geometry().width(),
+				LayoutSettings::settings()->quickLaunchBarLauncherAccessButtonOffsetPx.y() + m_qp_launcherAccessButton->geometry().height()/2));
+	
 
 	if(animate && !m_qp_reorderAnimationGroup.isNull() && m_qp_reorderAnimationGroup->animationCount()) {
 		m_qp_reorderAnimationGroup->start(QAbstractAnimation::DeleteWhenStopped);
@@ -1098,8 +1196,10 @@ IconBase* QuickLaunchBar::iconAtCoordinate(const QPointF& coord)
 	// determine if the provided coordinates falls into the bounds of any of the icons in the m_iconItems list
 	for (IconListIter it = m_iconItems.begin(); it != m_iconItems.end(); ++it)
 	{
-		qint32 slotX = m_layoutAnchorsXcoords.value(index);
-		QRectF target = (*it)->geometry().translated(QPoint(slotX, m_itemsY));
+		qreal slotX = m_layoutAnchorsCoords.value(index).x();
+		qreal slotY = m_layoutAnchorsCoords.value(index).y();
+		QRectF target;
+		target = (*it)->geometry().translated(QPoint(slotX, slotY));
 
 		if (target.contains(coord))
 		{
@@ -1671,4 +1771,34 @@ void QuickLaunchBar::cancelLaunchFeedback()
 void QuickLaunchBar::slotCancelLaunchFeedback()
 {
 	cancelLaunchFeedback();
+}
+
+void QuickLaunchBar::waveRelease()
+{
+	for (QList<QPointer<IconBase> >::iterator it = m_iconItems.begin();
+			it != m_iconItems.end();++it)
+	{
+		IconBase * pIcon = *it;
+		if (!pIcon)
+		{
+			continue;
+		}
+		
+		if(pIcon->launchFeedbackVisibility())
+		{
+			iconActivatedTap(pIcon->uid());
+			return;
+		}
+	}
+}
+
+void QuickLaunchBar::slotLauncherButton()
+{
+	//Fix for erroneous wave launcher behaviour
+	if(CardWindowManager::instance()->isMaximized())
+	{
+		Q_EMIT signalHideDock();
+	}
+	
+	Q_EMIT signalToggleLauncher();
 }

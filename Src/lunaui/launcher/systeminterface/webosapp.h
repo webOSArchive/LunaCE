@@ -91,6 +91,7 @@ public:
 	virtual QString title() const;
 	virtual QString version() const;
 	virtual QString category() const;
+	virtual QString mainIconFilePath() const;
 
 	virtual bool	nonRemovableSystemApp() const;
 	virtual bool	platformApp() const;

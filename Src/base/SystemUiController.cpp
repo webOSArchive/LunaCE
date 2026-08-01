@@ -47,10 +47,12 @@
 #include "OverlayWindowManager.h"
 #include "IMEController.h"
 #include "EmulatedCardWindow.h"
-#include "ScreenEdgeFlickGesture.h"
 #include "SoundPlayerPool.h"
 #include "DashboardWindowManager.h"
 #include "StatusBarServicesConnector.h"
+#include "CardWindowManager.h"
+
+#include <QApplication>
 
 #define MESSAGES_INTERNAL_FILE "SysMgrMessagesInternal.h"
 #include <PIpcMessageMacros.h>
@@ -62,8 +64,6 @@ static const char* kSystemUiAppId = "com.palm.systemui";
 
 static const unsigned int s_statusBarLauncherColor = 0x4f545AFF;
 static const unsigned int s_statusBarJustTypeColor = 0x4f545AFF;
-
-static const int kFlickMinimumYLengthWithKeyboardUp = 60;
 
 SystemUiController* SystemUiController::instance()
 {
@@ -86,6 +86,8 @@ SystemUiController::SystemUiController()
     m_modalWindowDismissErr = DismissUnknown;
 	m_cardWindowAboutToMaximize = false;
 	m_cardWindowMaximized = false;
+    m_switchCards = false;
+    m_minimizeGesture = false;
 	m_dashboardOpened = false;
 	m_dashboardSoftDismissable = true;
 	m_dashboardHasContent = false;
@@ -93,6 +95,7 @@ SystemUiController::SystemUiController()
 	m_emergencyMode = false;
 	m_inDockMode = false;
     m_universalSearchShown = false;
+    m_waveBar = false;
 
 	m_activeCardWindow = 0;
 	m_maximizedCardWindow = 0;
@@ -118,6 +121,9 @@ SystemUiController::SystemUiController()
 
 	m_uiRotating = false;
 	m_rotationAngle = 0;
+	
+	m_superKey = false;
+	m_superKeyCombo = false;
 
 	m_isBlockScreenTimeout = false;
 	m_isSubtleLightbar = false;
@@ -183,6 +189,8 @@ void SystemUiController::init()
 	connect(ss, SIGNAL(signalExitBrickMode()), this, SLOT(slotExitBrickMode()));
 
 	connect(WebAppMgrProxy::instance(), SIGNAL(signalKeyEventRejected(const SysMgrKeyEvent&)), this, SLOT(slotKeyEventRejected(const SysMgrKeyEvent&)));
+	
+	connect(Preferences::instance(), SIGNAL(signalGetPrefsComplete()), this, SLOT(slotGetPrefsComplete()));
 
 	// Initial sizes for positive and negative spaces
     int positiveSpaceFromTop = Settings::LunaSettings()->positiveSpaceTopPadding;
@@ -228,6 +236,7 @@ bool SystemUiController::handleEvent(QEvent *event)
 		return handleKeyEvent(static_cast<QKeyEvent*>(event));
 	case QEvent::MouseButtonPress:
 	case QEvent::MouseButtonRelease:
+	case QEvent::MouseMove:
 		return handleMouseEvent(static_cast<QMouseEvent*>(event));
 	case QEvent::Gesture:
 		return handleGestureEvent (static_cast<QGestureEvent*>(event));
@@ -243,6 +252,121 @@ bool SystemUiController::handleEvent(QEvent *event)
 
 bool SystemUiController::handleMouseEvent(QMouseEvent *event)
 {
+	int xDown = event->pos().x();
+	int yDown = event->pos().y();
+	QPoint offset(0,0);
+	
+	static int startX;
+	static int startY;
+
+	//Transform touch coordinates to match the screen orientation
+	switch (WindowServer::instance()->getUiOrientation())
+	{
+		case OrientationEvent::Orientation_Up: //Speakers Down
+			//Do nothing
+			offset = QPoint(0,-16);
+			break;
+		case OrientationEvent::Orientation_Down: //Speakers Up
+			xDown = (m_uiWidth-1) - xDown;
+			yDown = (m_uiHeight-1) - yDown;
+			offset = QPoint(0,60);
+			break;
+		case OrientationEvent::Orientation_Left: //Speakers Right
+		{
+			int temp = (m_uiHeight-1) - xDown;
+			xDown = yDown;
+			yDown = temp;
+			offset = QPoint(16,0);
+			break;
+		}
+		case OrientationEvent::Orientation_Right: //Speakers Left
+		{
+			int temp = xDown;
+			xDown = (m_uiWidth-1) - yDown;
+			yDown = temp;
+			offset = QPoint(-16,0);
+			break;
+		}
+		default:
+			g_warning("Unknown UI orientation");
+			return false;
+	}
+	
+	if(event->type() == QEvent::MouseMove)
+	{
+		if(m_waveBar)
+		{
+			if(!OverlayWindowManager::systemActiveInstance()->dockInAnimation())
+			{
+				yDown = max(yDown, m_uiHeight/3);
+				OverlayWindowManager::systemActiveInstance()->animateWaveDock(QPoint(xDown - (m_uiWidth/2),yDown - (m_uiHeight/2) - 16));
+				return true;
+			}
+			else
+			{
+				OverlayWindowManager::systemActiveInstance()->quicklaunchBar()->quickLaunchBar()->setWavePos(xDown - (m_uiWidth/2));
+				OverlayWindowManager::systemActiveInstance()->quicklaunchBar()->quickLaunchBar()->rearrangeIcons(false);
+			}
+		}
+		else
+		{
+			if (Preferences::instance()->sysUiEnableWaveLauncher())
+			{
+				QPoint diff(xDown - startX, yDown - startY);
+				if(diff.y() < -kGestureBorderSize * 2 && abs(diff.x()) < abs(diff.y()))
+				{
+					if((startX >= m_uiWidth - kGestureBorderSize * 2 && xDown >= m_uiWidth - kGestureBorderSize * 2)
+					|| (startX <= kGestureBorderSize * 2 && xDown <= kGestureBorderSize * 2))
+					{
+						m_waveBar = true;
+						if(CardWindowManager::instance()->isMinimized() || m_launcherShown) {
+							OverlayWindowManager::systemActiveInstance()->setQueueWave(true);
+							Q_EMIT signalHideDock();
+						}
+						else {
+							Q_EMIT signalShowDock();
+							OverlayWindowManager::systemActiveInstance()->animateWaveDock(QPoint(xDown - (m_uiWidth/2),yDown - (m_uiHeight/2) - 16));
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	if(event->type() == QEvent::MouseButtonPress && Preferences::instance()->sysUiEnableGestureDeadzone())
+	{
+		//Note start x for Wave Launcher
+		startX = xDown;
+		startY = yDown;
+		 
+		//Adhere to 'Enable Advanced Gestures' setting
+		if (!Preferences::instance()->sysUiEnableNextPrevGestures()) return false;
+		
+		//Eat mousedown events if they fall inside the gesture border
+		if (xDown <= kGestureBorderSize && yDown > m_statusBarPtr->boundingRect().height()) return true;
+		if (xDown >= (m_uiWidth-1) - kGestureBorderSize && yDown > m_statusBarPtr->boundingRect().height()) return true;
+		if (yDown >= (m_uiHeight-1) - kGestureBorderSize) return true;
+	}
+	
+	if(event->type() == QEvent::MouseButtonRelease && m_waveBar)
+	{
+		m_waveBar = false;
+		if(yDown < (m_uiHeight - 1) - kGestureBorderSize)
+		{
+			if(xDown < (m_uiWidth - 1) - 128)
+			{
+				OverlayWindowManager::systemActiveInstance()->quicklaunchBar()->quickLaunchBar()->waveRelease();
+			}
+			else
+			{
+				Q_EMIT signalToggleLauncher();
+			}
+		}
+		Q_EMIT signalHideDock();
+		return true;
+	}
+	
+	//Otherwise, let them through
 	return false;
 }
 
@@ -260,14 +384,88 @@ bool SystemUiController::handleGestureEvent (QGestureEvent* event)
 					}
 				}
 			}
+			
+			if (tap->position().x() <= kGestureBorderSize
+			|| tap->position().x() >= m_uiWidth - kGestureBorderSize
+			|| tap->position().y() <= kGestureBorderSize
+			|| tap->position().y() >= m_uiHeight - kGestureBorderSize)
+			{
+				CardWindowManager::instance()->deadzoneTap(tap);
+			}
 		}
 	}
+	
+	t = event->gesture(Qt::PinchGesture);
+	if (t) {
+		QPinchGesture* pinch = static_cast<QPinchGesture*>(t);
+		handlePinchGesture(pinch);
+	}
 
-	if (!t) {
+	if (Preferences::instance()->sysUiEnableNextPrevGestures() == true && !m_waveBar) {
 		if (Settings::LunaSettings()->uiType != Settings::UI_MINIMAL && !m_emergencyMode) {
-			t = event->gesture((Qt::GestureType) SysMgrGestureScreenEdgeFlick);
+			//Fluid Gestures
+			t = event->gesture((Qt::GestureType) BezelGestureType);
 			if (t)
-				handleScreenEdgeFlickGesture(t);
+			{
+   				BezelGesture* gesture = static_cast<BezelGesture*>(t);
+   				//Flick Gestures
+   				if(Preferences::instance()->sysUiGestureDetection() == 0
+   				&& gesture->state() == Qt::GestureFinished)
+   				{
+					if(gesture->edge() == Edge(Left) && gesture->flick() == 1)
+					{
+						handleSideSwipe(true);
+					}
+					else if(gesture->edge() == Edge(Right) && gesture->flick() == -1)
+					{
+						handleSideSwipe(false);
+					}
+					else if(gesture->edge() == Edge(Bottom) && gesture->flick() == -1)
+					{
+						handleUpSwipe();
+					}
+				}
+				
+   				//Slide Gestures
+   				if(Preferences::instance()->sysUiGestureDetection() == 1)
+   				{
+   					static bool fired = false;
+   					
+   					if(fired == false)
+   					{
+						if(gesture->edge() == Edge(Left))
+						{
+							handleSideSwipe(true);
+						}
+						else if(gesture->edge() == Edge(Right))
+						{
+							handleSideSwipe(false);
+						}
+						else if(gesture->edge() == Edge(Bottom))
+						{
+							handleUpSwipe();
+						}
+					}
+   					
+   					if(gesture->state() == Qt::GestureFinished)
+   						fired = false;
+   					else
+   						fired = true;
+				}
+				
+   				//Fluid Gestures
+   				if(Preferences::instance()->sysUiGestureDetection() == 2)
+   				{
+					if(gesture->edge() == Edge(Left) || gesture->edge() == Edge(Right))
+					{
+						handleSwitchGesture(gesture);
+					}
+					else if(gesture->edge() == Edge(Bottom))
+					{
+						handleMinimizeGesture(gesture);
+					}
+				}
+			}
 		}
 	}
 	
@@ -328,8 +526,75 @@ bool SystemUiController::handleKeyEvent(QKeyEvent *event)
         case Qt::Key_Escape: // maps to the open/close notifications key on BT keyboards
         case Qt::Key_Search: // maps to universal search toggle
         case Qt::Key_Super_L: // maps to the card view key (launcher gesture)
+        	m_superKey = true;
         case Qt::Key_Keyboard:
             return true;
+
+        case Qt::Key_Tab: {
+        	if(m_superKey)
+        	{
+				if(Preferences::instance()->getTabbedCardsPreference())
+				{
+					if(!CardWindowManager::instance()->isGroup())
+						Q_EMIT signalSideSwipe(true);
+					else
+						CardWindowManager::instance()->cycleGroupTabs();
+				}
+				else
+					handleSideSwipe(false);
+					
+				m_superKeyCombo = true;
+					
+        		return true;
+        	}
+        }
+        case Qt::Key_Left: {
+        	if(m_superKey)
+        	{
+				if (!m_launcherShown) {
+					if(CardWindowManager::instance()->isMaximized())
+						Q_EMIT signalChangeCardWindow(true);
+				}
+				
+				m_superKeyCombo = true;
+					
+        		return true;
+        	}
+        }
+        case Qt::Key_Right: {
+        	if(m_superKey)
+        	{
+				if (!m_launcherShown) {
+					if(CardWindowManager::instance()->isMaximized())
+						Q_EMIT signalChangeCardWindow(false);
+				}
+				
+				m_superKeyCombo = true;
+					
+        		return true;
+        	}
+        }
+        case Qt::Key_Up: {
+        	if(m_superKey)
+        	{
+				handleUpSwipe();
+				m_superKeyCombo = true;
+        		return true;
+        	}
+        }
+        case Qt::Key_Down: {
+        	if(m_superKey && CardWindowManager::instance()->isMinimized())
+        	{
+        		if(!m_launcherShown)
+					Q_EMIT signalMaximizeActiveCardWindow();
+				else
+					Q_EMIT signalToggleLauncher();
+					
+				m_superKeyCombo = true;
+				
+        		return true;
+        	}
+        }
 
 		case Qt::Key_Shift:
 		case Qt::Key_Control:
@@ -350,7 +615,30 @@ bool SystemUiController::handleKeyEvent(QKeyEvent *event)
 			if (m_menuVisible && !m_deviceLocked) {
 				Q_EMIT signalHideMenu();
 			}
-
+			
+			//Numbers for QL, this sauce is a little stronger than it used to be, but still weak
+			if (event->key() > 0x30 && event->key() < 0x39 && m_superKey)
+			{
+				QList<QPointF> coords = OverlayWindowManager::systemActiveInstance()->quicklaunchBar()->quickLaunchBar()->iconCoords();
+				int numIcons = coords.size();
+				int keyPos = (int) event->key() - 48 - 1;
+				if(keyPos <= numIcons) {
+					int pos;
+					if(keyPos < coords.size())
+						pos = coords[keyPos].x();
+					else
+						pos = (m_uiWidth/2) - 64; //Launcher button
+						
+					m_waveBar = true;
+					m_superKeyCombo = true;
+					Q_EMIT signalShowDock();
+					OverlayWindowManager::systemActiveInstance()->animateWaveDock(QPoint(0,m_uiHeight/2 - 50));
+					OverlayWindowManager::systemActiveInstance()->quicklaunchBar()->quickLaunchBar()->setWavePos(pos);
+					OverlayWindowManager::systemActiveInstance()->quicklaunchBar()->quickLaunchBar()->rearrangeIcons(false);
+					return true;
+				}
+			}
+			
 			// Allow event to be passed on to webkit(!)
 			break;
 		}
@@ -434,7 +722,20 @@ bool SystemUiController::handleKeyEvent(QKeyEvent *event)
 
 		case (Qt::Key_CoreNavi_Launcher):
         case (Qt::Key_Super_L): {
-
+        	m_superKey = false;
+        	
+        	if(m_waveBar)
+			{
+				m_waveBar = false;
+				Q_EMIT signalHideDock();
+				OverlayWindowManager::systemActiveInstance()->quicklaunchBar()->quickLaunchBar()->waveRelease();
+			}
+        	
+        	if(m_superKeyCombo) {
+        		m_superKeyCombo = false; //C-C-C-COMBO BREAKER!!!
+        		return false;
+        	}
+        	
 			if (Settings::LunaSettings()->uiType == Settings::UI_MINIMAL) {
 				break;
 			}
@@ -557,6 +858,14 @@ bool SystemUiController::handleKeyEvent(QKeyEvent *event)
 
 				return true;
 			}
+            
+            if (m_switchCards) {
+                Q_EMIT signalMaximizeActiveCardWindow();
+            }
+            
+            if (m_minimizeGesture) {
+                Q_EMIT signalMaximizeActiveCardWindow();
+            }
 
             // the auto repeat flag set on the Home Key Release, signifies a Double Tap
             if (!event->isAutoRepeat()) {
@@ -1913,6 +2222,11 @@ void SystemUiController::slotExitBrickMode()
 	}
 }
 
+void SystemUiController::slotGetPrefsComplete()
+{
+	updateStatusBarTitle();
+}
+
 void SystemUiController::launcherAction(LauncherActions act)
 {
 	switch (act)
@@ -2036,72 +2350,62 @@ std::string SystemUiController::getMenuTitleForMaximizedWindow(Window* win)
 	return name;
 }
 
-void SystemUiController::handleScreenEdgeFlickGesture(QGesture* gesture)
+void SystemUiController::handleSideSwipe(bool next)
 {
-	ScreenEdgeFlickGesture* g = static_cast<ScreenEdgeFlickGesture*>(gesture);
-	if (g->state() != Qt::GestureFinished)
+	//Adhere to Enable App Switching Gestures
+	if (Preferences::instance()->sysUiEnableAppSwitchGestures() == false)
 		return;
-
-    OrientationEvent::Orientation orientation = WindowServer::instance()->getUiOrientation();
-	switch (orientation) {
-    case OrientationEvent::Orientation_Up: {
-		if (g->edge() != ScreenEdgeFlickGesture::EdgeBottom)
-			return;
-		break;
-	}
-    case OrientationEvent::Orientation_Down: {
-		if (g->edge() != ScreenEdgeFlickGesture::EdgeTop)
-			return;
-		break;
-	}
-    case OrientationEvent::Orientation_Left: {
-		if (g->edge() != ScreenEdgeFlickGesture::EdgeLeft)
-			return;
-		break;
-	}
-    case OrientationEvent::Orientation_Right: {
-		if (g->edge() != ScreenEdgeFlickGesture::EdgeRight)
-			return;
-		break;
-	}
-	default: {
-		g_warning("Unknown UI orientation");
+	
+	if (m_deviceLocked || m_inDockMode)
 		return;
-	}
+	
+	if (m_dashboardOpened) {
+		Q_EMIT signalCloseDashboard(true);
 	}
 	
-	// enforce a larger minimum Y distance for the flick gesture when the keyboard is up
-	if(IMEController::instance()->isIMEOpened()) {
-		if(g->yDistance() < kFlickMinimumYLengthWithKeyboardUp)
-			return; // not long enough, so ignore it
+	if (m_menuVisible) {
+		Q_EMIT signalHideMenu();
 	}
+	
+	if (Preferences::instance()->getTabbedCardsPreference() == true)
+	{
+		Q_EMIT signalSideSwipe(!next);
+		return;
+	}
+	
+	//Switch to next/prev app based on next argument
+	if (!m_launcherShown) {
+		Q_EMIT signalChangeCardWindow(next);
+	}
+}
 
+void SystemUiController::handleUpSwipe() {
 	if (m_inDockMode) {
 		enterOrExitDockModeUi(false);
 		return;
 	}
-
+	
 	if (m_deviceLocked)
 		return;
-
+	
 	if (m_dashboardOpened) {
 		Q_EMIT signalCloseDashboard(true);
 	}
-
+	
 	if (m_menuVisible) {
 		Q_EMIT signalHideMenu();
 	}
-
+	
 	if (m_universalSearchShown) {
 		Q_EMIT signalHideUniversalSearch(false, false);
 		return;
 	}
-		
+	
 	if (m_launcherShown) {
 		Q_EMIT signalToggleLauncher();
 		return;
 	}
-
+	
 	if ((m_activeCardWindow && m_maximizedCardWindow) || m_cardWindowAboutToMaximize) {
 		if (false == m_modalCardWindowActive)
 			Q_EMIT signalShowDock();
@@ -2109,7 +2413,112 @@ void SystemUiController::handleScreenEdgeFlickGesture(QGesture* gesture)
 		Q_EMIT signalMinimizeActiveCardWindow();
 		return;
 	}
-
-	Q_EMIT signalToggleLauncher();					
+	
+	Q_EMIT signalToggleLauncher();
 }
 
+void SystemUiController::handleSwitchGesture(BezelGesture* gesture)
+{
+	//Adhere to Enable App Switching Gestures
+	if (Preferences::instance()->sysUiEnableAppSwitchGestures() == false)
+		return;
+		
+	//No point continuing if the device is locked, in dock mode or showing universal search
+	if (m_deviceLocked || m_inDockMode || m_universalSearchShown)
+		return;
+    
+    if(gesture->state() == Qt::GestureStarted || gesture->state() == Qt::GestureUpdated)
+        m_switchCards = true;
+    else
+        m_switchCards = false;
+	
+	if (m_dashboardOpened)
+		Q_EMIT signalCloseDashboard(true);
+
+	if (m_menuVisible)
+		Q_EMIT signalHideMenu();
+    
+    Q_EMIT signalSwitchGesture(gesture);
+}
+
+void SystemUiController::handleMinimizeGesture(BezelGesture* gesture)
+{
+    static bool fired = false;
+    
+	if (m_inDockMode) {
+		enterOrExitDockModeUi(false);
+		fired = true;
+		return;
+	}
+	
+	if (m_deviceLocked)
+		return;
+	
+	if (m_dashboardOpened)
+		Q_EMIT signalCloseDashboard(true);
+	
+	if (m_menuVisible)
+		Q_EMIT signalHideMenu();
+	
+	if (m_universalSearchShown) {
+		Q_EMIT signalHideUniversalSearch(false, false);
+		fired = true;
+		return;
+	}
+	
+	if (CardWindowManager::instance()->isGroup()) {
+		if(!fired)
+		{
+			Q_EMIT signalMinimizeActiveCardWindow();
+			fired = true;
+			return;
+		}
+	}
+	
+	if (m_launcherShown || (!m_launcherShown && CardWindowManager::instance()->isMinimized())) {
+		if(!fired)
+		{
+			Q_EMIT signalToggleLauncher();
+			fired = true;
+			return;
+		}
+	}
+    
+    if (gesture->state() == Qt::GestureFinished)
+    	fired = false;
+	
+	Q_EMIT signalMinimizeGesture(gesture);
+}
+
+void SystemUiController::handlePinchGesture(QPinchGesture* gesture)
+{
+	if (m_deviceLocked || m_launcherShown || m_universalSearchShown || m_inDockMode)
+		return;
+					
+	static bool fired = false;
+	
+	if(gesture->state() == Qt::GestureUpdated)
+	{
+		//Trigger the spread
+		if(!fired)
+		{
+			//Should we fire?
+			if(gesture->totalScaleFactor() <= 0.9 || gesture->totalScaleFactor() >= 1.1)
+			{
+				if (m_dashboardOpened)
+					Q_EMIT signalCloseDashboard(true);
+				
+				if (m_menuVisible)
+					Q_EMIT signalHideMenu();
+				
+				fired = true;
+			}
+		}
+	}
+	else if(gesture->state() == Qt::GestureFinished)
+	{
+		fired = false;
+	}
+	
+	Q_EMIT signalSpreadGesture(gesture);
+}

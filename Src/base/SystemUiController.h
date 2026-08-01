@@ -40,6 +40,7 @@
 #include "Window.h"
 #include "CustomEvents.h"
 #include "StatusBar.h"
+#include "BezelGesture.h"
 
 class CardWindow;
 class SysMgrKeyEvent;
@@ -66,6 +67,8 @@ public:
     bool handleMouseEvent(QMouseEvent *event);
     bool handleGestureEvent(QGestureEvent *event);
     bool handleCustomEvent(QEvent *event);
+    
+    void postTap(QPoint pos);
 
 	void setCardWindowAboutToMaximize();
 
@@ -173,6 +176,11 @@ public:
 	void rotationComplete();
 	bool isUiRotating() { return m_uiRotating; }
 	int  getRotationAngle() { return m_uiRotating ? m_rotationAngle : 0; }
+	
+	bool superKey() { return m_superKey; }
+	void setSuperKey(bool superKey) { m_superKey = superKey; }
+	bool superKeyCombo() { return m_superKeyCombo; }
+	void setSuperKeyCombo(bool superKeyCombo) { m_superKeyCombo = superKeyCombo; }
 
 	bool dashboardOwnsNegativeSpace() const { return m_dashboardOwnsNegativeSpace; }
 
@@ -312,6 +320,9 @@ Q_SIGNALS:
 	void signalCardWindowMaximized();
 	void signalCardWindowMinimized();
 	void signalChangeCardWindow(bool next);
+    void signalSwitchGesture(BezelGesture* gesture);
+    void signalMinimizeGesture(BezelGesture* gesture);
+    void signalSpreadGesture(QPinchGesture* gesture);
 
 	void signalHideMenu();
 
@@ -379,11 +390,15 @@ Q_SIGNALS:
 	void signalUiRotationCompleted();
 
 	void signalEmergencyModeWindowFocusChange(bool focus);
+	
+	void signalSideSwipe(bool direction);
 
 private Q_SLOTS:
 
 	void slotEnterBrickMode(bool val);
 	void slotExitBrickMode();
+	
+	void slotGetPrefsComplete();
 
 	void slotCopy();
 	void slotCut();
@@ -401,7 +416,12 @@ private:
 	void animValueChanged(const QVariant& value);
 	bool allowSuspend();
 	void setSuspended(bool);
-	void handleScreenEdgeFlickGesture(QGesture* gesture);
+	void handleSideSwipe(bool next);
+	void handleUpSwipe();
+	void handleSwitchGesture(BezelGesture* gesture);
+	void handleMinimizeGesture(BezelGesture* gesture);
+	void handlePinchGesture(QPinchGesture* gesture);
+	void handleTapAndHoldGesture(QTapAndHoldGesture* gesture);
 
 	Window* m_parentOfModalWindow;
 	Window* m_activeCardWindow;
@@ -411,6 +431,8 @@ private:
 
 	bool m_cardWindowAboutToMaximize;
 	bool m_cardWindowMaximized;
+    bool m_switchCards;
+    bool m_minimizeGesture;
 	bool m_dashboardOpened;
 	bool m_dashboardSoftDismissable;
 	bool m_dashboardHasContent;
@@ -420,6 +442,7 @@ private:
 	bool m_dockShown;
 	bool m_inDockMode;
     bool m_universalSearchShown;
+    bool m_waveBar;
 
 	bool m_emergencyMode;
 
@@ -451,6 +474,10 @@ private:
 
 	bool m_uiRotating;
 	int  m_rotationAngle;
+	
+	//Super key checks
+	bool m_superKey;
+	bool m_superKeyCombo;
 
 	SuspendBlocker<SystemUiController> m_suspendBlocker;
 

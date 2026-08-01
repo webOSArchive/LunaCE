@@ -23,6 +23,7 @@
 #define CARDWINDOWMANAGERSTATES_H
 
 #include "Common.h"
+#include "BezelGesture.h"
 
 #include <QState>
 #include <QGraphicsSceneMouseEvent>
@@ -53,6 +54,9 @@ public:
 	virtual void flickGestureEvent(QGestureEvent* event) {}
 	virtual void tapGestureEvent(QTapGesture* event) {}
 	virtual void tapAndHoldGestureEvent(QTapAndHoldGesture* event) {}
+	virtual void switchCardEvent(BezelGesture* gesture) {}
+	virtual void minimizeGestureEvent(BezelGesture* gesture) {}
+	virtual void spreadGestureEvent(QPinchGesture* gesture) {}
 
 	virtual void windowAdded(CardWindow* win);
 	virtual void windowRemoved(CardWindow* win);
@@ -113,6 +117,30 @@ protected:
 
 Q_SIGNALS:
 	void signalFirstCardRun();
+};
+
+// -----------------------------------------------------------------------------------
+
+class GroupState : public CardWindowManagerState
+{
+  Q_OBJECT
+
+public:
+	GroupState(CardWindowManager* wm)
+		: CardWindowManagerState(wm) { setObjectName("GroupState"); }
+
+	virtual void mousePressEvent(QGraphicsSceneMouseEvent* event);
+	virtual void mouseMoveEvent(QGraphicsSceneMouseEvent* event);
+	virtual void mouseReleaseEvent(QGraphicsSceneMouseEvent* event);
+	
+	virtual void flickGestureEvent(QGestureEvent* event);
+	virtual void tapGestureEvent(QTapGesture* event);
+	
+	virtual bool handleKeyNavigation(QKeyEvent* keyEvent);
+
+protected:
+	//virtual void onExit(QEvent *event);
+	virtual void onEntry(QEvent* event);
 };
 
 // -----------------------------------------------------------------------------------
@@ -256,6 +284,53 @@ protected:
 
 private:
 	ReorderGrid* m_grid;
+};
+
+// -----------------------------------------------------------------------------------
+
+class SwitchGestureState : public CardWindowManagerState
+{
+	Q_OBJECT
+
+public:
+	SwitchGestureState(CardWindowManager* wm) 
+				: CardWindowManagerState(wm) { setObjectName("Switch"); }
+
+	virtual void switchCardEvent(BezelGesture* gesture);
+};
+
+// -----------------------------------------------------------------------------------
+
+class MinimizeGestureState : public CardWindowManagerState
+{
+	Q_OBJECT
+
+public:
+	MinimizeGestureState(CardWindowManager* wm) 
+				: CardWindowManagerState(wm) { setObjectName("MinimizeGesture"); }
+
+	virtual void minimizeGestureEvent(BezelGesture* gesture);
+
+protected:
+	virtual void onExit(QEvent* event);
+	virtual void onEntry(QEvent* event);
+};
+
+// -----------------------------------------------------------------------------------
+
+class SpreadGestureState : public CardWindowManagerState
+{
+	Q_OBJECT
+
+public:
+	SpreadGestureState(CardWindowManager* wm) 
+				: CardWindowManagerState(wm) { setObjectName("SpreadGesture"); }
+
+	virtual void spreadGestureEvent(QPinchGesture* gesture);
+
+protected:
+	virtual void onExit(QEvent* event);
+	virtual void onEntry(QEvent* event);
 };
 
 #endif /* CARDWINDOWMANAGERSTATES_H */

@@ -1,6 +1,7 @@
 /* @@@LICENSE
 *
 *      Copyright (c) 2010-2012 Hewlett-Packard Development Company, L.P.
+*                    2012 Måns Andersson <mail@mansandersson.se>
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -233,9 +234,9 @@ void PhoneKeyboard::setSymbolMode(PhoneKeymap::ESymbolMode symbolMode)
 		keyboardLayoutChanged();
 }
 
-void PhoneKeyboard::setKeyboardCombo(const std::string & layoutName, const std::string & languageName, bool showLanguageKey)
+void PhoneKeyboard::setKeyboardCombo(const std::string & keyboardLanguage, const std::string & keymap, const std::string & autoCorrectLanguage, bool showLanguageKey)
 {
-	const PhoneKeymap::LayoutFamily * layoutFamily = PhoneKeymap::LayoutFamily::findLayoutFamily(layoutName.c_str(), false);	// get default if not found
+	const PhoneKeymap::LayoutFamily * layoutFamily = PhoneKeymap::LayoutFamily::findLayoutFamily(keyboardLanguage.c_str(), false);	// get default if not found
 	bool changed = false;
 
 	if (m_keymap.setLayoutFamily(layoutFamily))
@@ -245,10 +246,10 @@ void PhoneKeyboard::setKeyboardCombo(const std::string & layoutName, const std::
 	}
 	syncKeymap();
 
-	if (m_keymap.setLanguageName(showLanguageKey ? languageName : ""))
+	if (m_keymap.setLanguageName(showLanguageKey ? autoCorrectLanguage : ""))
 		changed = true;
 
-	m_candidateBar.setLanguage(languageName);
+	m_candidateBar.setLanguage(autoCorrectLanguage);
 
 	if (changed)
 		keyboardLayoutChanged();
@@ -931,14 +932,6 @@ void PhoneKeyboard::tapEvent(const QPoint& tapPt)
 	g_debug("tapEvent: %d, %d", tapPt.x(), tapPt.y());
 #endif
 	m_candidateBar.tapEvent(tapPt);
-}
-
-void PhoneKeyboard::screenEdgeFlickEvent()
-{
-	// Mark all touches as consumed
-	for (std::map<int, Touch>::iterator iter = m_touches.begin(); iter != m_touches.end(); ++iter) {
-		iter->second.m_consumed = true;
-	}
 }
 
 void PhoneKeyboard::repeatChar()

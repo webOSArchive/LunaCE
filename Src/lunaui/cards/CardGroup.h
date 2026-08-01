@@ -36,12 +36,21 @@ QT_BEGIN_NAMESPACE
 class QPropertyAnimation;
 QT_END_NAMESPACE
 
+enum CardArranger {
+	Stack = 0, //Default minimized behaviour
+	Linear, //No overlap between cards
+	Minimize, //Minimize gesture
+	Tab //Tabbed cards
+};
+
 class CardGroup : public QObject
 {
 	Q_OBJECT
 	Q_PROPERTY(QPointF pos READ pos WRITE setPos)
 	Q_PROPERTY(qreal x READ x WRITE setX)
 	Q_PROPERTY(qreal y READ y WRITE setY)
+	Q_PROPERTY(qreal curScale READ curScale WRITE setCurScale)
+	Q_PROPERTY(qreal nonCurScale READ nonCurScale WRITE setNonCurScale)
 
 public:
 
@@ -63,6 +72,7 @@ public:
 	// returns whether the move was successful.
 	// NOTE: does not modify the GraphicsScene stacking order, you must 
 	// explicitly call raiseCards().
+	bool moveActiveCardTo(int location);
 	bool moveActiveCard(int direction);
 
 	// raises/lowers the current active card to the next/previous spot 
@@ -151,11 +161,32 @@ public:
 
 	qreal y() const { return m_pos.y(); }
 	void setY(const qreal& y);
+	
+	qreal curScale() const { return m_curScale; }
+	void setCurScale(const qreal& curScale) { m_curScale = curScale; }
+	
+	qreal nonCurScale() const { return m_nonCurScale; }
+	void setNonCurScale(const qreal& nonCurScale) { m_nonCurScale = nonCurScale; }
+	
+	qreal xDistanceFactor() const { return m_cardGroupXDistanceFactor; }
+	void setXDistanceFactor(const qreal xDistanceFactor) { m_cardGroupXDistanceFactor = xDistanceFactor; }
+    
+    int cardArranger() const { return m_cardArranger; }
+    void setCardArranger(int cardArranger) { m_cardArranger = cardArranger; }
+    
+    qreal miniScale() const { return m_miniScale; }
+    void setMiniScale(qreal scale) { m_miniScale = scale; }
+    
+    bool tabDirection() const { return m_tabDirection; }
+    void setTabDirection(bool tabDirection) { m_tabDirection = tabDirection; }
+	
 	bool shouldMaximizeOrScroll(QPointF scenePt);
 	bool testHit(QPointF scenePt);
+	int  testCardHit(QPointF scenePt); // Extended version of testHit
 	void moveToActiveCard();
 
-	QVector<CardWindow*> cards() const { return m_cards; }
+	QList<CardWindow*> cards() const { return m_cards; }
+	void removeCardWithoutDeleting(int cardNumber) {m_cards.removeAt(cardNumber);} // Removes Card from card list, not deleting memory.
 private:
 
 	QVector<CardWindow::Position> calculateOpenedPositions(qreal xOffset = 0.0);
@@ -168,7 +199,7 @@ private:
 	qreal m_nonCurScale;
 	int m_leftWidth;
 	int m_rightWidth;
-	QVector<CardWindow*> m_cards;
+	QList<CardWindow*> m_cards;
 	CardWindow* m_activeCard;
 	int m_cardGroupRotFactor;
 	double m_cardGroupXDistanceFactor;
@@ -178,6 +209,9 @@ private:
 	// 1: 	3-4 cards with the second card being the center of the group
 	// N:	>4 cards where valid positions are between 1.0 and N - 4 + 1
 	qreal m_currentPosition;
+	int m_cardArranger;
+    qreal m_miniScale;
+    bool m_tabDirection;
 };
 
 Q_DECLARE_METATYPE(CardWindow::Position)

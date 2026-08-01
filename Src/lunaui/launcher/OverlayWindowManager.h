@@ -127,6 +127,12 @@ public:
 	// property 'dockShown' access functions
 	bool dockShown() const;
 	void setDockShown(bool shown);
+	
+	// wave launcher animation
+	void animateWaveDock(QPoint pos);
+	
+	bool queueWave() const { return m_queueWave; }
+	void setQueueWave(bool queueWave) { m_queueWave = queueWave; }
 
 	// property 'universalSearchShown' access functions
 	bool universalSearchShown() const;
@@ -155,6 +161,8 @@ public:
 
     virtual bool handleNavigationEvent(QKeyEvent* keyEvent, bool& propogate);
 
+	bool dockInAnimation() const;
+
 protected:
 
 	bool sceneEvent(QEvent* event);
@@ -168,8 +176,6 @@ protected:
 	bool mouseFlickEvent(FlickGesture* flick);
 
 private:
-
-	bool dockInAnimation() const;
 	void mapCoordToWindow(Window* win, int& x, int& y) const;
 
 	void setupSearchPill();
@@ -344,6 +350,9 @@ private:
 	QPoint		m_dockHiddenPos;
 	
 	int m_dockOffsetFromBottom;
+	//the positive space the launcher was last sized to; used to ignore the ime's
+	// shrink and the animation that grows it back (see slotPositiveSpaceChanged)
+	QSize m_launcherAppliedSpaceSize;
 	int m_oldDockOffsetFromBottom;
 
 	Window* m_universalSearchWin;
@@ -417,6 +426,7 @@ private:
 	QPointer<QPropertyAnimation> m_qp_launcherPosAnimation;
 	
 	bool m_pendingLauncherRecreate;
+	bool m_queueWave;
 
 	friend class WindowServerLuna;
 

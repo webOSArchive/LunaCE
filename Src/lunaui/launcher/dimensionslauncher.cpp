@@ -52,6 +52,12 @@
 #include "stringtranslator.h"
 #include "overlaylayer.h"
 #include "pagemovement.h"
+#include "SystemUiController.h"
+#include "groupicon.h"
+#include "groupoverlay.h"
+#include "renamedialog.h"
+#include "iconlayout.h"
+#include "reorderableiconlayout.h"
 
 #include <QCoreApplication>
 #include <QGraphicsSceneMouseEvent>
@@ -160,6 +166,7 @@ LauncherObject::LauncherObject(const QRectF& geometry,DimensionsUI * p_mainWindo
 , m_feedbackTimer(this)
 , m_p_pageMovementController(0)
 , m_blockingPageInteractions(false)
+, m_renameDialogCreatingNewPage(false)
 {
 
 	if (!s_qp_primaryInstance)
@@ -189,6 +196,356 @@ LauncherObject::LauncherObject(const QRectF& geometry,DimensionsUI * p_mainWindo
 QList<QPointer<Page> > LauncherObject::pages() const
 {
 	return m_pages;
+}
+
+ReorderablePage * LauncherObject::pageContainingIconUid(const QUuid& iconUid)
+{
+	for (QList<QPointer<Page> >::const_iterator it = m_pages.constBegin();
+			it != m_pages.constEnd();++it)
+	{
+		ReorderablePage * pReorderPage = qobject_cast<ReorderablePage *>(*it);
+		if (!pReorderPage)
+		{
+			continue;
+		}
+		if (pReorderPage->iconCellWithIconUid(iconUid))
+		{
+			return pReorderPage;
+		}
+	}
+	return 0;
+}
+
+bool LauncherObject::groupOverlayShowing() const
+{
+	return (m_qp_groupOverlay && m_qp_groupOverlay->isShowing());
+}
+
+bool LauncherObject::modalUiShowing() const
+{
+	return (groupOverlayShowing()
+			|| (m_qp_renameDialog && m_qp_renameDialog->isShowing()));
+}
+
+void LauncherObject::slotRenameDialogCommitted(const QString& newText)
+{
+	QString label = newText.trimmed();
+	if (label.isEmpty())
+	{
+		return;
+	}
+	if (m_renameDialogCreatingNewPage)
+	{
+		createUserTab(label);
+		return;
+	}
+	Page * pPage = m_qp_renameDialogTargetPage;
+	if (pPage)
+	{
+		//only the display name changes; the page designator stays as its stable identity
+		pPage->setProperty(Page::PageNamePropertyName,label);
+		pPage->setProperty(Page::PageNameUserSetPropertyName,true);
+		saveCurrentLauncherLayouts();
+	}
+}
+
+void LauncherObject::slotRenameDialogDeleteRequested()
+{
+	deleteUserTab(m_qp_renameDialogTargetPage);
+}
+
+void LauncherObject::slotRenameDialogDismissed()
+{
+	m_qp_renameDialogTargetPage = 0;
+	m_renameDialogCreatingNewPage = false;
+	restorePageInteraction();
+}
+
+void LauncherObject::hideAddTabAffordance()
+{
+	if (m_qp_pageTabBar)
+	{
+		m_qp_pageTabBar->slotHideAddTabButton();
+	}
+}
+
+void LauncherObject::slotAddTabRequested()
+{
+	if (!m_qp_pageTabBar)
+	{
+		return;
+	}
+	if ((quint32)(m_pages.size()) >= PageTabBar::MaxTabs)
+	{
+		return;
+	}
+	if (!m_qp_renameDialog)
+	{
+		m_qp_renameDialog = new RenameDialog(m_geom,this);
+		m_qp_renameDialog->setParentItem(this);
+		m_qp_renameDialog->setPos(0.0,0.0);
+		connect(m_qp_renameDialog,SIGNAL(signalRenameCommitted(const QString&)),
+				this,SLOT(slotRenameDialogCommitted(const QString&)));
+		connect(m_qp_renameDialog,SIGNAL(signalDeleteRequested()),
+				this,SLOT(slotRenameDialogDeleteRequested()));
+		connect(m_qp_renameDialog,SIGNAL(signalDismissed()),
+				this,SLOT(slotRenameDialogDismissed()));
+	}
+	m_qp_renameDialogTargetPage = 0;
+	m_renameDialogCreatingNewPage = true;
+	blockPageInteraction();
+	//tapping away from a NEW tab dialog throws it away rather than creating something
+	m_qp_renameDialog->showDialog(StringTranslator::inputString(LOCALIZED("New Tab")),
+								StringTranslator::inputString(LOCALIZED("New Tab")),
+								false,false);
+}
+
+void LauncherObject::createUserTab(const QString& tabName)
+{
+	if ((quint32)(m_pages.size()) >= PageTabBar::MaxTabs)
+	{
+		return;
+	}
+	ReorderablePage * pPage = new ReorderablePage(m_currentPageGeom,this);
+	pPage->layoutFromItemList(IconList());
+	pPage->setProperty(Page::PageNamePropertyName,tabName);
+	pPage->setProperty(Page::PageNameUserSetPropertyName,true);
+	pPage->setProperty(Page::PageUserCreatedPropertyName,true);
+	//a designator of its own, so the stock-designator reconciliation never claims it
+	pPage->setProperty(Page::PageDesignatorPropertyName,
+			QString("usertab_") + QUuid::createUuid().toString());
+
+	_pageAddDirect(pPage,m_pages.size());
+	if (m_qp_pageTabBar)
+	{
+		m_qp_pageTabBar->slotAddTab(tabName.toUpper(),pPage);
+	}
+	saveCurrentLauncherLayouts();
+}
+
+void LauncherObject::deleteUserTab(Page * p_page)
+{
+	if (!p_page)
+	{
+		return;
+	}
+	//the stock set of tabs is a floor the rest of webOS expects; only tabs beyond
+	// those can go (position-based, so tabs created before the user-created flag
+	// existed are removable too)
+	if (m_pages.indexOf(QPointer<Page>(p_page)) < (int)PageTabBar::MinPermanentTabs)
+	{
+		return;
+	}
+	ReorderablePage * pDyingPage = qobject_cast<ReorderablePage *>(p_page);
+	//the first page that isn't the one being deleted receives its contents
+	ReorderablePage * pReceivingPage = 0;
+	for (QList<QPointer<Page> >::const_iterator it = m_pages.constBegin();
+			it != m_pages.constEnd();++it)
+	{
+		if ((*it) && ((*it) != p_page))
+		{
+			pReceivingPage = qobject_cast<ReorderablePage *>(*it);
+			if (pReceivingPage)
+			{
+				break;
+			}
+		}
+	}
+	if ((!pDyingPage) || (!pReceivingPage))
+	{
+		return;
+	}
+
+	//hand everything that was on the page over to the receiving page, in flow order
+	ReorderableIconLayout * pLayout = qobject_cast<ReorderableIconLayout *>(pDyingPage->m_qp_iconLayout);
+	IconList rescuedIcons;
+	if (pLayout)
+	{
+		QList<IconCell *> flowList = pLayout->iconCellsInFlowOrder();
+		for (QList<IconCell *>::const_iterator it = flowList.constBegin();
+				it != flowList.constEnd();++it)
+		{
+			if ((*it) && (*it)->m_qp_icon)
+			{
+				rescuedIcons << (*it)->m_qp_icon;
+			}
+		}
+	}
+
+	p_page->deactivatePage();
+	_pageRemoveDirect(p_page);
+	if (m_qp_pageTabBar)
+	{
+		m_qp_pageTabBar->slotRemoveTab(p_page);
+	}
+
+	for (IconList::const_iterator it = rescuedIcons.constBegin();
+			it != rescuedIcons.constEnd();++it)
+	{
+		IconBase * pIcon = *it;
+		if (!pIcon)
+		{
+			continue;
+		}
+		IconHeap::iconHeap()->tagIconWithLocationUid(pIcon->uid(),pReceivingPage->uid(),true);
+		pReceivingPage->addIcon(pIcon);
+	}
+
+	//land on a page that still exists
+	slotGotoPageIndex(qBound(0,centerPageIndex(),m_pages.size()-1));
+	saveCurrentLauncherLayouts();
+}
+
+void LauncherObject::openGroupOverlay(GroupIcon * p_groupIcon)
+{
+	if (!p_groupIcon)
+	{
+		return;
+	}
+	if (!m_qp_groupOverlay)
+	{
+		m_qp_groupOverlay = new GroupOverlay(m_geom,this);
+		m_qp_groupOverlay->setParentItem(this);
+		m_qp_groupOverlay->setPos(0.0,0.0);
+		connect(m_qp_groupOverlay,SIGNAL(signalMemberIconTapped(IconBase *)),
+				this,SLOT(slotGroupOverlayMemberTapped(IconBase *)));
+		connect(m_qp_groupOverlay,SIGNAL(signalMemberIconPoppedOut(IconBase *)),
+				this,SLOT(slotGroupOverlayMemberPoppedOut(IconBase *)));
+		connect(m_qp_groupOverlay,SIGNAL(signalDismissed()),
+				this,SLOT(slotGroupOverlayDismissed()));
+	}
+	blockPageInteraction();
+	m_qp_groupOverlay->showForGroup(p_groupIcon,pageContainingIconUid(p_groupIcon->uid()));
+}
+
+void LauncherObject::slotGroupOverlayMemberTapped(IconBase * p_icon)
+{
+	GroupIcon * pGroupIcon = (m_qp_groupOverlay ? m_qp_groupOverlay->currentGroup() : 0);
+	if (m_qp_groupOverlay)
+	{
+		m_qp_groupOverlay->hideOverlay();
+	}
+	slotIconActivatedTap(p_icon);
+	//the member icon isn't visible outside the overlay, so if a launch started, move
+	// the launch feedback glow onto the group's icon - the thing the user can see
+	if (pGroupIcon && p_icon && (m_iconShowingFeedback == p_icon))
+	{
+		setAppLaunchFeedback(pGroupIcon);
+	}
+}
+
+void LauncherObject::slotGroupOverlayMemberPoppedOut(IconBase * p_icon)
+{
+	if (!m_qp_groupOverlay)
+	{
+		return;
+	}
+	GroupIcon * pGroup = m_qp_groupOverlay->currentGroup();
+	ReorderablePage * pPage = m_qp_groupOverlay->ownerPage();
+	if ((!pGroup) || (!p_icon))
+	{
+		m_qp_groupOverlay->hideOverlay();
+		return;
+	}
+	if (!pPage)
+	{
+		pPage = pageContainingIconUid(pGroup->uid());
+	}
+	if (!pPage)
+	{
+		//nowhere to put the icon back; leave everything as-is
+		m_qp_groupOverlay->hideOverlay();
+		return;
+	}
+
+	//take the icon out of the group and give it back to the page
+	pGroup->removeMember(p_icon);
+	m_qp_groupOverlay->forgetIcon(p_icon);
+	p_icon->slotDisableIconAutoRepaint();
+	IconHeap::iconHeap()->tagIconWithLocationUid(p_icon->uid(),pPage->uid(),true);
+	pPage->addIcon(p_icon);
+	//dress the icon to match the page's current mode (the layout doesn't do this on add)
+	if (pPage->pageMode() == PageMode::Reorder)
+	{
+		if (canShowRemoveDeleteDecoratorOnIcon(p_icon->master()->uid()))
+		{
+			p_icon->slotChangeRemoveDeleteDecoratorVisibility(RemoveDeleteDecoratorSelector::Delete);
+		}
+		p_icon->slotChangeIconFrameVisibility(true);
+	}
+	else
+	{
+		p_icon->slotChangeRemoveDeleteDecoratorVisibility(RemoveDeleteDecoratorSelector::None);
+		p_icon->slotChangeIconFrameVisibility(false);
+	}
+
+	if (pGroup->memberCount() <= 1)
+	{
+		//groups don't exist with a single member: dissolve
+		IconBase * pLastIcon = (pGroup->memberCount() ? pGroup->members().first() : 0);
+		m_qp_groupOverlay->hideOverlay();
+		IconCell * pGroupCell = pPage->iconCellWithIconUid(pGroup->uid());
+		if (pGroupCell && pLastIcon)
+		{
+			pGroup->removeMember(pLastIcon);
+			pLastIcon->slotDisableIconAutoRepaint();
+			pLastIcon->setParentItem(pPage);
+			pLastIcon->take(pPage);
+			IconHeap::iconHeap()->tagIconWithLocationUid(pLastIcon->uid(),pPage->uid(),true);
+			(void)pGroupCell->setNewIcon(pLastIcon,true);
+			if (pPage->pageMode() == PageMode::Reorder)
+			{
+				if (canShowRemoveDeleteDecoratorOnIcon(pLastIcon->master()->uid()))
+				{
+					pLastIcon->slotChangeRemoveDeleteDecoratorVisibility(RemoveDeleteDecoratorSelector::Delete);
+				}
+				pLastIcon->slotChangeIconFrameVisibility(true);
+			}
+			else
+			{
+				pLastIcon->slotChangeRemoveDeleteDecoratorVisibility(RemoveDeleteDecoratorSelector::None);
+				pLastIcon->slotChangeIconFrameVisibility(false);
+			}
+		}
+		else
+		{
+			//no members left (or the cell vanished): just remove the group icon from the page
+			pPage->removeIconNoAnimations(pGroup->uid());
+		}
+		IconHeap::iconHeap()->deleteIconUnguarded(pGroup->uid());
+	}
+	else
+	{
+		m_qp_groupOverlay->relayoutMembers();
+	}
+	saveCurrentLauncherLayouts();
+}
+
+void LauncherObject::slotGroupOverlayDismissed()
+{
+	restorePageInteraction();
+}
+
+void LauncherObject::slotSystemApiChangeTabTitle(int tabIndex,QString newLabel)
+{
+	QString label = newLabel.trimmed();
+	if (label.isEmpty())
+	{
+		return;
+	}
+	if ((tabIndex < 0) || (tabIndex >= m_pages.size()))
+	{
+		return;
+	}
+	Page * pPage = m_pages[tabIndex];
+	if (!pPage)
+	{
+		return;
+	}
+	//only the display name changes; the page designator stays as its stable identity
+	pPage->setProperty(Page::PageNamePropertyName,label);
+	pPage->setProperty(Page::PageNameUserSetPropertyName,true);
+	saveCurrentLauncherLayouts();
 }
 
 quint32 LauncherObject::initPages()
@@ -402,6 +759,11 @@ quint32 LauncherObject::addMissingPredefinedDesignatorPages()
 		{
 			continue;
 		}
+		//user-created pages own their identity; never recycle them into a stock designator
+		if (m_pages[index]->property(Page::PageUserCreatedPropertyName).toBool())
+		{
+			continue;
+		}
 		//not in the set, not the favorites -- it's an unmatched page
 		unmatchedPageList << m_pages[index];
 	}
@@ -414,9 +776,13 @@ quint32 LauncherObject::addMissingPredefinedDesignatorPages()
 		QString unassignedDesignator = auxDesignators.takeFirst();
 		if (!unassignedDesignator.isEmpty())
 		{
-			//rename this page w/ it
-			(*it)->setProperty(Page::PageNamePropertyName,
-					DimensionsSystemInterface::AppMonitor::appMonitor()->pageNameFromDesignator(unassignedDesignator));
+			//rename this page w/ it -- unless the user renamed the page themselves, in
+			// which case only the designator (the stable identity) is reassigned
+			if (!((*it)->property(Page::PageNameUserSetPropertyName).toBool()))
+			{
+				(*it)->setProperty(Page::PageNamePropertyName,
+						DimensionsSystemInterface::AppMonitor::appMonitor()->pageNameFromDesignator(unassignedDesignator));
+			}
 			(*it)->setProperty(Page::PageDesignatorPropertyName,unassignedDesignator);
 		}
 	}
@@ -549,6 +915,10 @@ quint32 LauncherObject::addRestoredPages(bool ignoreRestoredPageIndex)
 					.toString();
 		g_warning("%s: [LAUNCHER-PAGE-INIT]: INFO: loop[%u] page[%u]: page designator = {%s}",__FUNCTION__,loopCount,pageCount,qPrintable(pageDesignator));
 		pPage->setProperty(Page::PageNamePropertyName,pageName);
+		pPage->setProperty(Page::PageNameUserSetPropertyName,
+				pageConf.value(DimensionsSystemInterface::PageSaver::SaveTagKey_PageNameUserSet,false).toBool());
+		pPage->setProperty(Page::PageUserCreatedPropertyName,
+				pageConf.value(DimensionsSystemInterface::PageSaver::SaveTagKey_PageUserCreated,false).toBool());
 		if (!pageDesignator.isEmpty())
 		{
 			pPage->setProperty(Page::PageDesignatorPropertyName,pageDesignator);
@@ -649,6 +1019,81 @@ quint32 LauncherObject::addRestoredPages(bool ignoreRestoredPageIndex)
 					o_it != restoredAppsList.constEnd();++o_it)
 			{
 				DimensionsSystemInterface::WebOSAppRestoreObject const& pRestoreObj = *o_it;
+
+				if (pRestoreObj.isGroup)
+				{
+					//materialize an app group from its member app ids; members that are gone
+					// or already claimed elsewhere are silently skipped, same as plain entries
+					GroupIcon * pGroupIcon = IconHeap::makeGroupIcon(
+							pRestoreObj.groupName.isEmpty()
+								? StringTranslator::inputString(LOCALIZED("Group"))
+								: pRestoreObj.groupName);
+					if (!pGroupIcon)
+					{
+						continue;
+					}
+					for (int m = 0;m < pRestoreObj.groupMemberAppIds.size();++m)
+					{
+						//trimmed()s guard against the ", "-joined QStringList serialization
+						QString memberAppId = pRestoreObj.groupMemberAppIds[m].trimmed();
+						QString memberLaunchPtId = pRestoreObj.groupMemberLaunchPtIds.value(m,memberAppId).trimmed();
+						DimensionsSystemInterface::WebOSApp * pMemberApp =
+								DimensionsSystemInterface::AppMonitor::appMonitor()->webosAppByAppId(memberAppId);
+						if (!pMemberApp)
+						{
+							continue;
+						}
+						IconBase * pMemberIcon = 0;
+						if (memberLaunchPtId == memberAppId)
+						{
+							//a main app icon: resolve the same way plain restored entries do
+							// (the appId+launchpointId alias doesn't cover main icons)
+							QUuid memberIconUid = iconUidFromAppUid(pMemberApp->uid());
+							if (!memberIconUid.isNull())
+							{
+								pMemberIcon = IconHeap::iconHeap()->getIcon(memberIconUid);
+							}
+						}
+						else
+						{
+							pMemberIcon = IconHeap::iconHeap()->getIcon(memberAppId,memberLaunchPtId);
+						}
+						if (!pMemberIcon)
+						{
+							continue;
+						}
+						pMemberIcon = pMemberIcon->master();
+						if (!(IconHeap::iconHeap()->tagIconWithLocationUid(pMemberIcon->uid(),pGroupIcon->uid())))
+						{
+							continue;
+						}
+						pMemberIcon->slotDisableIconAutoRepaint();
+						pGroupIcon->addMember(pMemberIcon);
+						m_appMapByIconUid.insert(pMemberIcon->uid(),pMemberApp->uid());
+					}
+					if (pGroupIcon->memberCount() >= 2)
+					{
+						if (IconHeap::iconHeap()->tagIconWithLocationUid(pGroupIcon->uid(),pPage->uid()))
+						{
+							iconList << pGroupIcon;
+							continue;
+						}
+					}
+					//fewer than 2 members survived (or tagging failed): degrade gracefully -
+					// a lone member goes back on the page as a plain icon
+					if (pGroupIcon->memberCount() == 1)
+					{
+						IconBase * pOnlyIcon = pGroupIcon->members().first();
+						pGroupIcon->removeMember(pOnlyIcon);
+						if (IconHeap::iconHeap()->tagIconWithLocationUid(pOnlyIcon->uid(),pPage->uid(),true))
+						{
+							iconList << pOnlyIcon;
+						}
+					}
+					IconHeap::iconHeap()->deleteIconUnguarded(pGroupIcon->uid());
+					continue;
+				}
+
 				IconBase * pIcon = 0;
 				if (pRestoreObj.launchpointId == pRestoreObj.appId)
 				{
@@ -1173,12 +1618,11 @@ bool LauncherObject::createTabsForAllPages()
 		if (tabLabel.isEmpty())
 		{
 			//TODO: LOCALIZE:
+			// (a page must always get a tab, even unnamed -- otherwise tab and page
+			//  indices silently desynchronize)
 			tabLabel = QString("(UNTITLED)");
 		}
-		else
-		{
-			m_qp_pageTabBar->slotAddTab(tabLabel,pPage);
-		}
+		m_qp_pageTabBar->slotAddTab(tabLabel,pPage);
 	}
 	return true;
 }
@@ -1244,6 +1688,11 @@ void LauncherObject::initObjects()
 
 void LauncherObject::initSignalSlotConnections()
 {
+	//---------------- SystemUiController connections
+	// (tab rename request coming in over the systemservice "launchertitlechange" api)
+	connect(SystemUiController::instance(),SIGNAL(signalLauncherRenameCard(int,QString)),
+			this,SLOT(slotSystemApiChangeTabTitle(int,QString)));
+
 	//---------------- AppMonitor connections
 	connect(DimensionsSystemInterface::AppMonitor::appMonitor(),SIGNAL(signalFullScanCompleted(bool)),
 			this,SLOT(slotAppScanCompleted(bool)));
@@ -1306,6 +1755,9 @@ void LauncherObject::fullSizeInit(quint32 width,quint32 height)
 
 	connect(m_qp_pageTabBar,SIGNAL(signalTabForPageActivatedTapAndHold(Page *)),
 			this,SLOT(slotTabActivatedTapAndHold(Page *)));
+
+	connect(m_qp_pageTabBar,SIGNAL(signalAddTabRequested()),
+			this,SLOT(slotAddTabRequested()));
 
 	connect(this,SIGNAL(signalBlockPageInteraction()),
 			m_qp_pageTabBar,SLOT(slotLauncherBlockedInteractions())
@@ -2217,6 +2669,17 @@ void LauncherObject::resize(int w, int h)
 		m_geom = DimensionsGlobal::realRectAroundRealPoint(rawNewSizeF);
 		//qDebug() << __FUNCTION__ << ": LauncherObject object resizing to geometry: " << m_geom;
 
+		//the modal panels shield the whole launcher, so they have to track its size
+		// (otherwise the dim layer only covers part of the screen after a rotation)
+		if (m_qp_groupOverlay)
+		{
+			m_qp_groupOverlay->resize((quint32)m_geom.width(),(quint32)m_geom.height());
+		}
+		if (m_qp_renameDialog)
+		{
+			m_qp_renameDialog->resize((quint32)m_geom.width(),(quint32)m_geom.height());
+		}
+
 		QSize pageTabBarSize = PageTabBar::PageTabSizeFromLauncherSize((quint32)m_geom.width(),(quint32)m_geom.height());
 		if (m_qp_pageTabBar)
 		{
@@ -2904,6 +3367,14 @@ void LauncherObject::slotIconActivatedTap(IconBase* pIcon)
 		return;
 	}
 
+	//a tap on an app group icon opens the group overlay instead of launching anything
+	GroupIcon * pGroupIcon = qobject_cast<GroupIcon *>(pIcon->master());
+	if (pGroupIcon)
+	{
+		openGroupOverlay(pGroupIcon);
+		return;
+	}
+
 	//if reorder mode is on...
 	//TODO: less hardcoded...see activePageEnteredReorderMode()
 	if (property("reorder_mode").toBool() &&
@@ -2987,6 +3458,7 @@ void LauncherObject::slotCancelLaunchFeedback()
 
 void LauncherObject::slotTabActivatedTap(Page * tabRelatedPage)
 {
+	hideAddTabAffordance();
 	if (tabRelatedPage == 0)
 	{
 		//nothing to do
@@ -2999,7 +3471,34 @@ void LauncherObject::slotTabActivatedTap(Page * tabRelatedPage)
 
 void LauncherObject::slotTabActivatedTapAndHold(Page * tabRelatedPage)
 {
-	//TODO: IMPLEMENT
+	//long-press on a tab: rename that tab/page
+	if (!tabRelatedPage)
+	{
+		return;
+	}
+	if (!m_qp_renameDialog)
+	{
+		m_qp_renameDialog = new RenameDialog(m_geom,this);
+		m_qp_renameDialog->setParentItem(this);
+		m_qp_renameDialog->setPos(0.0,0.0);
+		connect(m_qp_renameDialog,SIGNAL(signalRenameCommitted(const QString&)),
+				this,SLOT(slotRenameDialogCommitted(const QString&)));
+		connect(m_qp_renameDialog,SIGNAL(signalDeleteRequested()),
+				this,SLOT(slotRenameDialogDeleteRequested()));
+		connect(m_qp_renameDialog,SIGNAL(signalDismissed()),
+				this,SLOT(slotRenameDialogDismissed()));
+	}
+	m_qp_renameDialogTargetPage = tabRelatedPage;
+	m_renameDialogCreatingNewPage = false;
+	blockPageInteraction();
+	//tabs beyond the stock set can be deleted, so only those get the trash affordance.
+	// keyed on position rather than the user-created flag so that tabs made before
+	// that flag existed are removable too
+	m_qp_renameDialog->showDialog(
+			StringTranslator::inputString(LOCALIZED("Rename Tab")),
+			tabRelatedPage->property(Page::PageNamePropertyName).toString(),
+			true,
+			(m_pages.indexOf(QPointer<Page>(tabRelatedPage)) >= (int)PageTabBar::MinPermanentTabs));
 }
 
 void LauncherObject::slotPageModeChanged(PageMode::Enum oldV,PageMode::Enum newV)
@@ -3212,7 +3711,7 @@ void LauncherObject::showAppInfoDialog(const QString& dialogTitle,
 	m_appInfoDialog->setZValue(100.0);
 	QMetaObject::invokeMethod(m_appInfoDialog, "fade", Q_ARG(QVariant, true),
 														Q_ARG(QVariant,DynamicsSettings::settings()->appInfoDialogFadeInTime));
-	blockPageInteraction();
+	Q_EMIT signalBlockPageInteraction();
 }
 
 void LauncherObject::blockPageInteraction()
@@ -3447,7 +3946,7 @@ void LauncherObject::slotSystemShowingLauncherOverlay()
 	//and hide the appinfo dialog; ignore invisible
 	hideAppInfoDialog(true,true);
 	//block page interactions
-	blockPageInteraction();
+	Q_EMIT signalBlockPageInteraction();
 }
 
 void LauncherObject::slotSystemHidingLauncherOverlay()
@@ -3709,6 +4208,41 @@ void LauncherObject::_pageFinishedHPanAnim()
 {
 	//finished horizontal panning
 	slotHorizontalAnchorStopped();
+}
+
+void LauncherObject::_pageRemoveDirect(Page * p_page)
+{
+	if (!p_page)
+	{
+		return;
+	}
+	int idx = m_pages.indexOf(QPointer<Page>(p_page));
+	if (idx < 0)
+	{
+		return;
+	}
+	m_pages.removeAt(idx);
+	m_pageLimbo.remove(QPointer<Page>(p_page));
+	m_horizPanAnchor.removeFromGroup(p_page);
+	p_page->disconnect(this);
+	this->disconnect(p_page);
+
+	//re-index and re-position the pages that shifted left
+	for (int i = idx;i < m_pages.size();++i)
+	{
+		if (m_pages.at(i))
+		{
+			m_pages[i]->setProperty(Page::PageIndexPropertyName,i);
+			m_pages[i]->setPos(i*m_pages[i]->geometry().width(),0.0);
+		}
+	}
+
+	p_page->setParentItem(0);
+	if (p_page->scene())
+	{
+		p_page->scene()->removeItem(p_page);
+	}
+	p_page->deleteLater();
 }
 
 void LauncherObject::_pageAddDirect(Page * p_page,quint32 idx)

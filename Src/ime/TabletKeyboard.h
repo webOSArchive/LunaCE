@@ -1,6 +1,7 @@
 /* @@@LICENSE
 *
 *      Copyright (c) 2010-2012 Hewlett-Packard Development Company, L.P.
+*                    2012 Måns Andersson <mail@mansandersson.se>
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -140,7 +141,7 @@ public:
 	bool	setBoolOption(const std::string & optionName, bool value);
 	bool	setIntOption(const std::string & optionName, int value);
 	bool	getValue(const std::string & name, std::string & outValue);
-	void	setKeyboardCombo(const std::string & layoutName, const std::string & languageName, bool showLanguageKey);
+	void	setKeyboardCombo(const std::string & keyboardLanguage, const std::string & keymap, const std::string & autoCorrectLanguage, bool hasMoreThanOneKeyboardLayout);
 	void	keyboardCombosChanged()					{ m_keymap.keyboardCombosChanged(); }	// called by VirtualKeyboardPreferences when combos change
 
 	QList<const char *>	getLayoutNameList()			{ return m_keymap.getLayoutList(); }
@@ -165,7 +166,6 @@ public:
 	virtual void touchEvent(const QTouchEvent& te);
 	virtual void paint(QPainter& painter);
 	virtual void tapEvent(const QPoint& tapPt);
-	virtual void screenEdgeFlickEvent();
 
 protected:
 	void	updateTouch(int id, QPointF position);
@@ -211,6 +211,7 @@ public:
 
 protected Q_SLOTS:
 	void	repeatChar();
+	void	tickTrackball();
 
 private:
 	static TabletKeyboard *	s_instance;			// only valid while a keyboard exists.
@@ -222,6 +223,8 @@ private:
 	uint64_t			m_lastUnlockTime;
 
 	bool				m_resizeMode;
+	bool				m_trackballMode;
+	QPointF				m_trackballVelocity;
 	int					m_keyboardTopPading;
 	int					m_requestedHeight;
 	NineTileCorner		m_9tileCorner;
@@ -250,6 +253,9 @@ private:
 	bool				m_diamondOptimization;
 
 	bool				m_idleInit;
+	
+	QPointF				m_trackballDelta;
+	QTimer				m_trackballTimer;
 
 	// keyboard special key assets.
 	IMEPixmap			m_backspace;
@@ -273,6 +279,10 @@ private:
 	IMEPixmap			m_emoticon_yuck_small;
 	IMEPixmap			m_emoticon_gasp_small;
 	IMEPixmap			m_emoticon_heart_small;
+	
+	// trackball assets
+	IMEPixmap			m_trackball;
+	IMEPixmap			m_trackballArrows;
 
 	// keyboard background assets.
 	IMEPixmap			m_background;

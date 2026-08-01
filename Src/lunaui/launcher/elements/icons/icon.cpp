@@ -237,7 +237,9 @@ IconBase::IconBase(const QRectF& iconGeometry)
 , m_useOwnerSetAutopaintClip(false)
 , m_qp_layoutItemAssociation(0)
 , m_qp_iconPixmap(0)
+, m_showIcon(true)
 , m_qp_iconFramePixmap(0)
+, m_showFrame(false)
 , m_showWhichDeleteRemove(RemoveDeleteDecoratorSelector::None)
 , m_qp_removeDecoratorPixmap(0)
 , m_qp_removePressedDecoratorPixmap(0)
@@ -267,7 +269,9 @@ IconBase::IconBase(const QRectF& iconGeometry,Page * p_belongsTo)
 , m_useOwnerSetAutopaintClip(false)
 , m_qp_layoutItemAssociation(0)
 , m_qp_iconPixmap(0)
+, m_showIcon(true)
 , m_qp_iconFramePixmap(0)
+, m_showFrame(false)
 , m_showWhichDeleteRemove(RemoveDeleteDecoratorSelector::None)
 , m_qp_removeDecoratorPixmap(0)
 , m_qp_removePressedDecoratorPixmap(0)
@@ -311,7 +315,9 @@ IconBase::IconBase(const QRectF& iconGeometry,PixmapObject * p_framePix, PixmapO
 , m_useOwnerSetAutopaintClip(false)
 , m_qp_layoutItemAssociation(0)
 , m_qp_iconPixmap(0)
+, m_showIcon(true)
 , m_qp_iconFramePixmap(0)
+, m_showFrame(false)
 , m_showWhichDeleteRemove(RemoveDeleteDecoratorSelector::None)
 , m_qp_removeDecoratorPixmap(0)
 , m_qp_removePressedDecoratorPixmap(0)
@@ -326,6 +332,8 @@ IconBase::IconBase(const QRectF& iconGeometry,PixmapObject * p_framePix, PixmapO
 , m_labelColor(Qt::white)
 , m_qp_prerenderedLabelPixmap(0)
 , m_showLabel(true)
+, m_labelMode(false)
+, m_waveScale(1.0)
 , m_usePrerenderedLabel(false)
 , m_showFeedback(false)
 , m_qp_iconFeedbackPixmap(0)
@@ -612,6 +620,17 @@ LayoutItem * IconBase::layoutItemAssociation() const
 void IconBase::setLayoutItemAssociation(LayoutItem * v)
 {
 	m_qp_layoutItemAssociation = v;
+}
+
+void IconBase::setIconLabelMode(bool mode)
+{
+	m_labelMode = mode;
+	recalculateLabelPosition();
+}
+
+void IconBase::setIconWaveScale(qreal scale)
+{
+	m_waveScale = scale;
 }
 
 //public Q_SLOTS:
@@ -980,6 +999,9 @@ void IconBase::paint(QPainter *painter, const QStyleOptionGraphicsItem *option,Q
 		//fade the icon
 		painter->setOpacity(DynamicsSettings::settings()->iconInstallModeOpacity);
 	}
+	
+	painter->scale(m_waveScale,m_waveScale);
+	painter->setRenderHint(QPainter::SmoothPixmapTransform);
 
 	if (m_showFeedback)
 	{
@@ -1935,10 +1957,16 @@ void	IconBase::redoLabelTextLayout(bool renderLabelPixmap)
 void	IconBase::recalculateLabelPosition()
 {
 	//reposition the text
-	m_labelPosICS = QPoint(0,m_iconGeom.translated(m_iconPosICS).bottom()
-			-m_labelGeom.top()
-			+IconGeometrySettings::settings()->labelVerticalSpacingPx);
-
+	if(!m_labelMode) {
+		m_labelPosICS = QPoint(0,m_iconGeom.translated(m_iconPosICS).bottom()
+				-m_labelGeom.top()
+				+IconGeometrySettings::settings()->labelVerticalSpacingPx);
+	}
+	else {
+		m_labelPosICS = QPoint(0,m_iconGeom.translated(m_iconPosICS).top()
+				-m_labelGeom.bottom()*4
+				-IconGeometrySettings::settings()->labelVerticalSpacingPx);
+	}
 }
 
 //virtual

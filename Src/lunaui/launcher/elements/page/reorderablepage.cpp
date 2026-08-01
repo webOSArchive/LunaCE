@@ -22,6 +22,7 @@
 #include "reorderablepage.h"
 #include "reorderableiconlayout.h"
 #include "icon.h"
+#include "groupicon.h"
 #include "pixmapobject.h"
 #include "pixmaphugeobject.h"
 #include "scrollingsurface.h"
@@ -63,6 +64,18 @@ static QString EmptyPageText()
 
 #define EMPTY_ICON_FILEPATH QString("/launcher-empty-page.png")
 
+//how much of the target icon's central area counts as "drop onto it" (forming a group)
+// rather than "reorder next to it"; fraction of each icon dimension
+#define GROUP_DROP_CORE_FRACTION 0.6
+//how long (wall clock) the dragged icon must hover the core before the drop arms
+#define GROUP_DROP_DWELL_MS 300
+
+static QString DefaultGroupName()
+{
+	static QString s = StringTranslator::inputString(LOCALIZED("Group"));
+	return s;
+}
+
 const char * ReorderablePage::IsReorderingLayoutBoolPropertyName = "layout_in_reorder";
 
 ReorderablePage::ReorderablePage(const QRectF& pageGeometry,LauncherObject * p_belongsTo)
@@ -88,6 +101,11 @@ ReorderablePage::ReorderablePage(const QUuid& specificUid,const QRectF& pageGeom
 //virtual
 void ReorderablePage::commonCtor()
 {
+	m_groupDropCandidateArmed = false;
+	m_groupDropDwellTimer.setSingleShot(true);
+	m_groupDropDwellTimer.setInterval(GROUP_DROP_DWELL_MS);
+	connect(&m_groupDropDwellTimer,SIGNAL(timeout()),this,SLOT(slotGroupDropDwellTimeout()));
+
 	QString emptyText = EmptyPageText();
 	if (!emptyText.isEmpty())
 	{
@@ -392,6 +410,12 @@ static void resetEventCounters()
 //virtual
 bool ReorderablePage::tapGesture(QTapGesture *tapEvent,QGestureEvent * baseGestureEvent)
 {
+	//a tap on the page counts as "somewhere else" for the tab bar's "+" affordance
+	if (LauncherObject::primaryInstance())
+	{
+		LauncherObject::primaryInstance()->hideAddTabAffordance();
+	}
+
 	//ignore if an icon is currently moving (tracking)
 	//TODO: MULTI-TOUCH: (obvious)
 	if (m_qp_iconInMotion)
@@ -1077,10 +1101,13 @@ void ReorderablePage::touchTrackedPointMoved(int id,const QPointF& scenePosition
 		if (detectAndHandleSpecialMoveAreas(id,pageCoordinate,nullCtx))
 		{
 			//there was a special move generated...do not reset the event counter, just return;
+			clearGroupDropCandidate();
 			return;
 		}
 		QPoint gridCoord;
-		if (iconAtLayoutCoordinate(pageCoordinate,gridCoord))
+		QPointF intraIconCoord;
+		IconBase * pHitIcon = iconAtLayoutCoordinate(pageCoordinate,gridCoord,&intraIconCoord);
+		if (pHitIcon)
 		{
 			//check to see if the grid coordinate given represents a row that is COMPLETELY within the rendered view.
 			QRectF gridRowArea = pLayout->rowArea(gridCoord.y());
@@ -1092,6 +1119,13 @@ void ReorderablePage::touchTrackedPointMoved(int id,const QPointF& scenePosition
 //				qDebug() << "The row at grid-y =  " << gridCoord.y() << " is not completely rendered. Not doing any moves";
 				return;
 			}
+			if (updateGroupDropCandidate(pHitIcon,gridCoord,intraIconCoord))
+			{
+				//hovering a group-drop target; suppress reorder moves so the target doesn't
+				// ripple away from under the finger
+				gEventCounter0 = 0;
+				return;
+			}
 			if (gridCoord != m_iconInMotionCurrentGridPosition)
 			{
 				pLayout->trackedIconMovedTo(m_qp_iconInMotion,gridCoord,m_iconInMotionCurrentGridPosition);
@@ -1099,6 +1133,7 @@ void ReorderablePage::touchTrackedPointMoved(int id,const QPointF& scenePosition
 		}
 		else
 		{
+			clearGroupDropCandidate();
 			QPoint lastPosition = pLayout->lastOccupiedGridPosition();
 
 			//if the icon moved to x > last cell, y within last row, OR y > last row, then interpret that as the last icon cell in the layout
@@ -1222,10 +1257,13 @@ void ReorderablePage::redirectedTouchTrackedPointMoved(Thing * p_sourceThing,int
 				if (detectAndHandleSpecialMoveAreas(id,pageCoordinate,redirContext))
 				{
 					//there was a special move generated...do not reset the event counter, just return;
+					clearGroupDropCandidate();
 					return;
 				}
 				QPoint gridCoord;
-				if (iconAtLayoutCoordinate(pageCoordinate,gridCoord))
+				QPointF intraIconCoord;
+				IconBase * pHitIcon = iconAtLayoutCoordinate(pageCoordinate,gridCoord,&intraIconCoord);
+				if (pHitIcon)
 				{
 					//check to see if the grid coordinate given represents a row that is COMPLETELY within the rendered view.
 					QRectF gridRowArea = pLayout->rowArea(gridCoord.y());
@@ -1237,6 +1275,13 @@ void ReorderablePage::redirectedTouchTrackedPointMoved(Thing * p_sourceThing,int
 						//				qDebug() << "The row at grid-y =  " << gridCoord.y() << " is not completely rendered. Not doing any moves";
 						return;
 					}
+					if (updateGroupDropCandidate(pHitIcon,gridCoord,intraIconCoord))
+					{
+						//hovering a group-drop target; suppress reorder moves so the target doesn't
+						// ripple away from under the finger
+						gEventCounter0 = 0;
+						return;
+					}
 					if (gridCoord != m_iconInMotionCurrentGridPosition)
 					{
 						pLayout->trackedIconMovedTo(m_qp_iconInMotion,gridCoord,m_iconInMotionCurrentGridPosition);
@@ -1244,6 +1289,7 @@ void ReorderablePage::redirectedTouchTrackedPointMoved(Thing * p_sourceThing,int
 				}
 				else
 				{
+					clearGroupDropCandidate();
 					QPoint lastPosition = pLayout->lastOccupiedGridPosition();
 
 					//if the icon moved to x > last cell, y within last row, OR y > last row, then interpret that as the last icon cell in the layout
@@ -1751,10 +1797,171 @@ void ReorderablePage::redirectedTouchTrackedPointReleased(Thing * p_sourceThing,
 }
 
 //virtual
+IconCell * ReorderablePage::iconCellWithIconUid(const QUuid& iconUid)
+{
+	ReorderableIconLayout * pLayout = qobject_cast<ReorderableIconLayout *>(m_qp_iconLayout);
+	if (pLayout == NULL)
+	{
+		return 0;
+	}
+	QPoint gridCoord;
+	return pLayout->findIconByUid(iconUid,gridCoord);
+}
+
+//virtual
+bool ReorderablePage::updateGroupDropCandidate(IconBase * p_hitIcon,const QPoint& gridCoord,const QPointF& intraIconCoord)
+{
+	Q_UNUSED(gridCoord);
+	if ((!m_qp_iconInMotion) || (!p_hitIcon) || (p_hitIcon == m_qp_iconInMotion))
+	{
+		clearGroupDropCandidate();
+		return false;
+	}
+	//a group cannot be dropped into another icon/group
+	if (qobject_cast<GroupIcon *>(m_qp_iconInMotion->master()))
+	{
+		clearGroupDropCandidate();
+		return false;
+	}
+	//must be within the central core zone of the target icon; the outer ring keeps
+	// meaning "reorder next to it"
+	QRectF targetGeom = p_hitIcon->geometry();
+	qreal coreHalfW = targetGeom.width() * 0.5 * GROUP_DROP_CORE_FRACTION;
+	qreal coreHalfH = targetGeom.height() * 0.5 * GROUP_DROP_CORE_FRACTION;
+	if ((qAbs(intraIconCoord.x()) > coreHalfW) || (qAbs(intraIconCoord.y()) > coreHalfH))
+	{
+		clearGroupDropCandidate();
+		return false;
+	}
+	if (m_qp_groupDropCandidateIcon != p_hitIcon)
+	{
+		clearGroupDropCandidate();
+		m_qp_groupDropCandidateIcon = p_hitIcon;
+		//the timer covers the hold-still case; move events while hovering don't restart it
+		m_groupDropDwellTimer.start();
+	}
+	return true;
+}
+
+//virtual
+void ReorderablePage::slotGroupDropDwellTimeout()
+{
+	if ((!m_qp_groupDropCandidateIcon) || (!m_qp_iconInMotion))
+	{
+		return;
+	}
+	m_groupDropCandidateArmed = true;
+	//visual cue on the target: the launch feedback glow
+	m_qp_groupDropCandidateIcon->setLaunchFeedbackVisibility(true);
+	m_qp_groupDropCandidateIcon->update();
+}
+
+//virtual
+void ReorderablePage::clearGroupDropCandidate()
+{
+	if (m_qp_groupDropCandidateIcon)
+	{
+		m_qp_groupDropCandidateIcon->setLaunchFeedbackVisibility(false);
+		m_qp_groupDropCandidateIcon->update();
+	}
+	m_qp_groupDropCandidateIcon = 0;
+	m_groupDropCandidateArmed = false;
+	m_groupDropDwellTimer.stop();
+}
+
+//virtual
+bool ReorderablePage::commitGroupDrop()
+{
+	if ((!m_groupDropCandidateArmed) || (!m_qp_groupDropCandidateIcon) || (!m_qp_iconInMotion))
+	{
+		clearGroupDropCandidate();
+		return false;
+	}
+	ReorderableIconLayout * pLayout = qobject_cast<ReorderableIconLayout *>(m_qp_iconLayout);
+	if (pLayout == NULL)
+	{
+		clearGroupDropCandidate();
+		return false;
+	}
+	//same quiesce-first discipline as the quicklaunch transfer: don't restructure the
+	// layout while reorder ripples are still animating
+	if (pLayout->areTherePendingReorderAnimations())
+	{
+		clearGroupDropCandidate();
+		return false;
+	}
+
+	IconBase * pDragged = m_qp_iconInMotion->master();
+	IconBase * pTarget = m_qp_groupDropCandidateIcon->master();
+	clearGroupDropCandidate();
+
+	//pull the dragged icon out of this layout; this also relayouts, fixes up the
+	// scroller, and clears m_qp_iconInMotion (same steps as a cross-container transfer)
+	if (!releaseTransferredIcon(pDragged))
+	{
+		return false;
+	}
+
+	GroupIcon * pGroup = qobject_cast<GroupIcon *>(pTarget);
+	if (!pGroup)
+	{
+		//dropped onto a plain app icon: make a brand new group in the target's cell
+		pGroup = IconHeap::makeGroupIcon(DefaultGroupName());
+		if (!pGroup)
+		{
+			//can't create a group; give the dragged icon its place back at the end of the layout
+			acceptIncomingIcon(pDragged);
+			iconRelease();
+			return true;
+		}
+		QPoint targetGridCoord;
+		IconCell * pTargetCell = pLayout->findIconByUid(pTarget->uid(),targetGridCoord);
+		if (!pTargetCell)
+		{
+			//target vanished mid-drop; same recovery as above
+			acceptIncomingIcon(pDragged);
+			iconRelease();
+			return true;
+		}
+		pGroup->setParentItem(this);
+		pGroup->slotDisableIconAutoRepaint();
+		//the drop always happens in reorder mode, so give the new group icon the
+		// same reorder graphics its neighbors are wearing right now
+		if (pageMode() == PageMode::Reorder)
+		{
+			pGroup->slotChangeIconFrameVisibility(true);
+		}
+		(void)pTargetCell->setNewIcon(pGroup,true);
+		IconHeap::iconHeap()->tagIconWithLocationUid(pGroup->uid(),uid(),true);
+
+		//the target now lives inside the group; strip its reorder-mode graphics
+		pTarget->slotChangeRemoveDeleteDecoratorVisibility(RemoveDeleteDecoratorSelector::None);
+		pTarget->slotChangeIconFrameVisibility(false);
+		pTarget->slotDisableIconAutoRepaint();
+		pGroup->addMember(pTarget);
+		IconHeap::iconHeap()->tagIconWithLocationUid(pTarget->uid(),pGroup->uid(),true);
+	}
+
+	pDragged->slotChangeRemoveDeleteDecoratorVisibility(RemoveDeleteDecoratorSelector::None);
+	pDragged->slotChangeIconFrameVisibility(false);
+	pDragged->slotDisableIconAutoRepaint();
+	pGroup->addMember(pDragged);
+	IconHeap::iconHeap()->tagIconWithLocationUid(pDragged->uid(),pGroup->uid(),true);
+
+	Q_EMIT signalPageNeedsSave();
+	update();
+	return true;
+}
+
+//virtual
 void ReorderablePage::iconRelease()
 {
 	if (m_qp_iconInMotion)
 	{
+		if (commitGroupDrop())
+		{
+			return;
+		}
 		ReorderableIconLayout * pLayout = qobject_cast<ReorderableIconLayout *>(m_qp_iconLayout);
 		if (pLayout != NULL)
 		{
@@ -1763,6 +1970,7 @@ void ReorderablePage::iconRelease()
 		m_qp_iconInMotion = 0;
 		m_iconInMotionCurrentGridPosition = QPoint();
 	}
+	clearGroupDropCandidate();
 	update();
 }
 
@@ -1771,6 +1979,7 @@ void ReorderablePage::slotTrackedIconCancelTrack(const QUuid& uid)
 	//TODO: TEMP: for now, this page only tracks one icon, so just kill that one w/o checking uid
 	m_qp_iconInMotion = 0;
 	m_iconInMotionCurrentGridPosition = QPoint();
+	clearGroupDropCandidate();
 }
 
 //virtual

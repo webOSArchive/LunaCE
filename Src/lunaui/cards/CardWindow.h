@@ -97,6 +97,9 @@ public:
 
 	void enableShadow();
 	void disableShadow();
+	
+	void enableFullScreen();
+	void disableFullScreen();
 
 	virtual void setPrepareAddedToWindowManager() { m_prepareAddedToWm = true; }
 	bool prepareAddedToWindowManager() const { return m_prepareAddedToWm; }
@@ -190,6 +193,7 @@ public:
     virtual void setMaxAndLoading(bool enable);
     virtual bool isMaxAndLoading() const { return m_maxAndLoading; }
 
+	QRectF boundingRect() { return m_boundingRect; }
 	void setBoundingRect(int width, int height) {
 
 		int visibleWidth = width;
@@ -260,8 +264,6 @@ protected:
 	bool pinchEvent(QGestureEvent* event);
 	bool mouseSingleClickEvent(QGestureEvent* singleClick);
 	bool coversScreenFully() const;
-	void enableFullScreen();
-	void disableFullScreen();
 	virtual void fullScreenEnabled(bool val);
 	void updateDirectRenderingPosition();
 

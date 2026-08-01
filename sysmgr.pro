@@ -252,6 +252,7 @@ SOURCES = \
 	CardGroup.cpp \
 	KeyboardMapping.cpp \
 	SingleClickGestureRecognizer.cpp \
+	BezelGestureRecognizer.cpp \
 	BootupAnimation.cpp \
 	ProgressAnimation.cpp \
 	CardHostWindow.cpp \
@@ -265,12 +266,15 @@ SOURCES = \
 	StatusBar.cpp \
 	StatusBarClock.cpp \
 	StatusBarBattery.cpp \
+	StatusBarSearch.cpp \
+	StatusBarSeparator.cpp \
 	StatusBarTitle.cpp \
 	StatusBarServicesConnector.cpp \
 	StatusBarIcon.cpp \
 	StatusBarInfo.cpp \
 	StatusBarItemGroup.cpp \
 	StatusBarNotificationArea.cpp \
+	StatusBarVersion.cpp \
 	SystemMenu.cpp \
 	BtDeviceClass.cpp \
 	IMEManager.cpp \
@@ -440,7 +444,9 @@ HEADERS = \
 	CardGroup.h \
 	KeyboardMapping.h \
 	SingleClickGestureRecognizer.h \
+	BezelGestureRecognizer.h \
 	SingleClickGesture.h \
+	BezelGesture.h \
 	BootupAnimation.h \
 	ProgressAnimation.h \
 	CardHostWindow.h \
@@ -454,6 +460,8 @@ HEADERS = \
 	StatusBar.h \
 	StatusBarClock.h \
 	StatusBarBattery.h \
+	StatusBarSearch.h \
+	StatusBarSeparator.h \
 	StatusBarTitle.h \
 	StatusBarServicesConnector.h \
 	StatusBarIcon.h \
@@ -461,6 +469,7 @@ HEADERS = \
 	StatusBarItem.h \
 	StatusBarItemGroup.h \
 	StatusBarNotificationArea.h \
+	StatusBarVersion.h \
 	SystemMenu.h \
 	BtDeviceClass.h \
 	IMEManager.h \
@@ -563,6 +572,7 @@ SOURCES += dimensionsmain.cpp \
 			webosapp.cpp \
 			appmonitor.cpp \
 			iconheap.cpp \
+			groupicon.cpp \
 			stringtranslator.cpp \
 			appeffector.cpp \
 			pagesaver.cpp \
@@ -578,6 +588,8 @@ SOURCES += dimensionsmain.cpp \
 			vcamera.cpp \
 			expblur.cpp \
 			overlaylayer.cpp \
+			groupoverlay.cpp \
+			renamedialog.cpp \
 			safefileops.cpp
 			
 HEADERS += dimensionsmain.h \
@@ -646,6 +658,7 @@ HEADERS += dimensionsmain.h \
 			webosapp.h \
 			appmonitor.h \
 			iconheap.h \
+			groupicon.h \
 			stringtranslator.h \
 			appeffector.h \
 			pagesaver.h \
@@ -662,6 +675,8 @@ HEADERS += dimensionsmain.h \
 			vcamera.h \
 			expblur.h \
 			overlaylayer.h \
+			groupoverlay.h \
+			renamedialog.h \
 			safefileops.h
 			
 ####### LAUNCHER ADDITIONS ########

@@ -29,12 +29,15 @@
 #include "gfxsettings.h"
 #include "layoutsettings.h"
 #include "pagetab.h"
+#include "page.h"
 
 #include <QGraphicsSceneMouseEvent>
+#include <QGraphicsScene>
 #include <QPainter>
 #include <QString>
 #include <QDebug>
 #include <QSizeF>
+#include <QDateTime>
 
 #include "QEvent"
 #include <QGesture>
@@ -54,6 +57,13 @@
 #define TAB_HIGHLIGHTED_BACKGROUND_FILEPATH QString("tab-highlight.png")
 #define TAB_SHADOW_BACKGROUND_FILEPATH QString("tab-shadow.png")
 #define TAB_VDIV_FILEPATH QString("tab-divider.png")
+//"+" glyph for adding a tab, harvested from the Mojo framework (2-state sprite,
+// normal state on top) so it matches the rest of the system ui
+#define TAB_ADD_ICON_FILEPATH QString("tab-add-icon.png")
+//how long a press in the empty part of the bar must be held to reveal the "+"
+#define ADD_TAB_LONGPRESS_MS		650
+//how far the finger may wander before the press stops counting as a long-press
+#define ADD_TAB_LONGPRESS_SLOP_PX	16
 
 uint qHash(const QPointer<PageTab>& p)
 {
@@ -82,6 +92,9 @@ QFont PageTabBar::staticLabelFontForTabs()
 
 PageTabBar::PageTabBar(const QRectF& pageTabBarGeometry,LauncherObject * p_belongsTo)
 : ThingPaintable(pageTabBarGeometry)
+, m_showAddTabButton(false)
+, m_addTabRevealedByThisPress(false)
+, m_qp_addTabIconPmo(0)
 , m_maxTabWidth(150)
 , m_interactionsBlocked(false)
 , m_qp_currentUIOwner(p_belongsTo)
@@ -93,6 +106,17 @@ PageTabBar::PageTabBar(const QRectF& pageTabBarGeometry,LauncherObject * p_belon
 		this->setParentItem(m_qp_currentUIOwner);
 
 	grabGesture((Qt::GestureType) SysMgrGestureFlick);
+	//NOTE: deliberately NOT grabbing Tap/TapAndHold here. The bar shares gesture
+	// arbitration with its child tabs (and the rest of the scene), and claiming those
+	// types here disrupts tap delivery launcher-wide. The empty-space long-press is
+	// detected from plain mouse events + a timer instead.
+	m_addTabLongPressTimer.setSingleShot(true);
+	m_addTabLongPressTimer.setInterval(ADD_TAB_LONGPRESS_MS);
+	connect(&m_addTabLongPressTimer,SIGNAL(timeout()),this,SLOT(slotAddTabLongPressTimeout()));
+
+	m_qp_addTabIconPmo = PixmapObjectLoader::instance()->quickLoad(
+			QString(GraphicsSettings::DiUiGraphicsSettings()->graphicsAssetBaseDirectory
+					+ TAB_ADD_ICON_FILEPATH));
 
 	m_backgroundGeom = m_geom;
 	m_backgroundShadowGeom = m_geom;
@@ -156,6 +180,84 @@ QSize PageTabBar::PageTabSizeFromLauncherSize(quint32 launcherWidth,quint32 laun
 	return r;
 }
 
+//size of the "+" affordance shown in the empty part of the bar
+#define ADD_TAB_BUTTON_EDGE_PX	28
+
+void PageTabBar::resizeAllTabs()
+{
+	if (m_pageTabs.isEmpty())
+	{
+		return;
+	}
+	resetTabSpaces();
+	QSizeF tabMaxSize = QSizeF(newTabMaxSize());
+	for (PageTabConstIterator it = m_pageTabs.constBegin(); it != m_pageTabs.constEnd();++it)
+	{
+		if (*it)
+		{
+			(*it)->resize(tabMaxSize.toSize());
+		}
+	}
+	relayoutExistingTabs();
+}
+
+QRectF PageTabBar::addTabButtonRect() const
+{
+	if (m_unusedTabSpace.width() < (qreal)(ADD_TAB_BUTTON_EDGE_PX + 8))
+	{
+		return QRectF();
+	}
+	qreal edge = (qreal)ADD_TAB_BUTTON_EDGE_PX;
+	return QRectF(m_unusedTabSpace.left() + 12.0,
+				m_unusedTabSpace.center().y() - edge/2.0,
+				edge,edge);
+}
+
+void PageTabBar::slotHideAddTabButton()
+{
+	if (m_showAddTabButton)
+	{
+		m_showAddTabButton = false;
+		update();
+	}
+}
+
+void PageTabBar::slotRemoveTab(Page * p_refersToPage)
+{
+	if (!p_refersToPage)
+	{
+		return;
+	}
+	for (int i = m_pageTabs.size()-1;i >= 0;--i)
+	{
+		if ((!m_pageTabs[i]) || (m_pageTabs[i]->relatedPage() == p_refersToPage))
+		{
+			PageTab * pTab = m_pageTabs[i];
+			m_pageTabs.removeAt(i);
+			if (pTab)
+			{
+				pTab->setParentItem(0);
+				if (pTab->scene())
+				{
+					pTab->scene()->removeItem(pTab);
+				}
+				pTab->deleteLater();
+			}
+		}
+	}
+	//re-index the remaining tabs and re-flow them
+	for (int i = 0;i < m_pageTabs.size();++i)
+	{
+		if (m_pageTabs[i])
+		{
+			m_pageTabs[i]->setTabIndex(i);
+		}
+	}
+	resizeAllTabs();
+	relayoutExistingTabs();
+	update();
+}
+
 void PageTabBar::slotAddTab(const QString& labelString,Page * p_refersToPage)
 {
 	if (labelString.isEmpty())
@@ -164,6 +266,12 @@ void PageTabBar::slotAddTab(const QString& labelString,Page * p_refersToPage)
 	//TODO: DETERMINE THE SIZE OF THE STRING NAME, and use that as tab size, and not just Max size
 	PageTab * pPageTab = new PageTab(DimensionsGlobal::realRectAroundRealPoint(QSizeF(newTabMaxSize())),
 									labelString,this,p_refersToPage);
+
+	if (p_refersToPage)
+	{
+		connect(p_refersToPage,SIGNAL(signalPageNameChanged(const QString&,const QString&)),
+				this,SLOT(slotPageNameChanged(const QString&,const QString&)));
+	}
 
 /*
  * #define TAB_NORMAL_BACKGROUND_FILEPATH 	QString("tab-bg.png")
@@ -251,6 +359,9 @@ void PageTabBar::slotAddTab(const QString& labelString,Page * p_refersToPage)
 			pPageTab,SLOT(slotInteractionsAllowed())
 			);
 
+	//the bar splits its width among the tabs, so the existing ones have to give
+	// room to the new arrival
+	resizeAllTabs();
 }
 
 void PageTabBar::slotUnHighlightAll()   //outside -> Tab bar
@@ -343,6 +454,35 @@ void PageTabBar::paint(QPainter *painter, const QStyleOptionGraphicsItem *option
 		m_qp_backgroundShadowPmo->paint(painter,m_backgroundShadowGeom.topLeft());
 	}
 
+	if (m_showAddTabButton)
+	{
+		QRectF buttonRect = addTabButtonRect();
+		if (!buttonRect.isEmpty())
+		{
+			painter->save();
+			painter->setRenderHint(QPainter::SmoothPixmapTransform);
+			if (m_qp_addTabIconPmo && m_qp_addTabIconPmo->data()
+				&& (!m_qp_addTabIconPmo->data()->isNull()))
+			{
+				//2-state sprite: the normal state is the upper half
+				QPixmap * pIconPix = m_qp_addTabIconPmo->data();
+				QRect sourceRect(0,0,pIconPix->width(),pIconPix->height()/2);
+				painter->drawPixmap(buttonRect.toRect(),*pIconPix,sourceRect);
+			}
+			else
+			{
+				//no asset: plainly drawn "+" so the action stays reachable
+				painter->setRenderHint(QPainter::Antialiasing);
+				QPointF c = buttonRect.center();
+				qreal arm = buttonRect.width()/4.0;
+				painter->setPen(QPen(QColor(255,255,255,220),3.0,Qt::SolidLine,Qt::RoundCap));
+				painter->drawLine(QPointF(c.x()-arm,c.y()),QPointF(c.x()+arm,c.y()));
+				painter->drawLine(QPointF(c.x(),c.y()-arm),QPointF(c.x(),c.y()+arm));
+			}
+			painter->restore();
+		}
+	}
+
 //	QPen sp = painter->pen();
 //	painter->setPen(Qt::magenta);
 //	painter->drawRect(m_geom);
@@ -407,12 +547,41 @@ bool PageTabBar::resize(const QSize& s)
 //virtual
 void PageTabBar::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
+	//a press that lands in the empty part of the bar (never on a tab) starts the
+	// timer that reveals the "add a tab" affordance
+	m_addTabLongPressTimer.stop();
+	m_addTabRevealedByThisPress = false;
+	if ((!m_interactionsBlocked)
+		&& m_unusedTabSpace.contains(event->pos())
+		&& ((quint32)(m_pageTabs.size()) < PageTabBar::MaxTabs))
+	{
+		m_addTabPressPos = event->pos();
+		m_addTabLongPressTimer.start();
+	}
 	event->accept();
+}
+
+void PageTabBar::slotAddTabLongPressTimeout()
+{
+	if (m_interactionsBlocked)
+	{
+		return;
+	}
+	m_showAddTabButton = true;
+	//the release that ends this very press must not dismiss what it just revealed
+	m_addTabRevealedByThisPress = true;
+	update();
 }
 
 //virtual
 void PageTabBar::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
+	//dragging away from the press point means this isn't a long-press
+	if (m_addTabLongPressTimer.isActive()
+		&& ((event->pos() - m_addTabPressPos).manhattanLength() > ADD_TAB_LONGPRESS_SLOP_PX))
+	{
+		m_addTabLongPressTimer.stop();
+	}
 	event->accept();
 //	qreal moveByX = event->pos().x() - event->lastPos().x();
 //	qreal moveByY = event->pos().y() - event->lastPos().y();
@@ -434,6 +603,26 @@ void PageTabBar::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 //virtual
 void PageTabBar::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
+	m_addTabLongPressTimer.stop();
+	if (m_showAddTabButton)
+	{
+		if (m_addTabRevealedByThisPress)
+		{
+			//this release merely ends the long-press that revealed the affordance;
+			// leave it up so it can actually be tapped
+		}
+		else if (addTabButtonRect().contains(event->pos()))
+		{
+			slotHideAddTabButton();
+			Q_EMIT signalAddTabRequested();
+		}
+		else
+		{
+			//tapped elsewhere in the bar: dismiss
+			slotHideAddTabButton();
+		}
+	}
+	m_addTabRevealedByThisPress = false;
 	event->accept();
 }
 
@@ -446,6 +635,23 @@ void PageTabBar::slotTabActivatedTap()
 		return;
 	}
 	Q_EMIT signalTabForPageActivatedTap(pTab->relatedPage());
+}
+
+//virtual
+void PageTabBar::slotPageNameChanged(const QString& oldName,const QString& newName)
+{
+	Q_UNUSED(oldName);
+	Page * pPage = qobject_cast<Page *>(sender());
+	if (pPage == NULL)
+	{
+		return;
+	}
+	PageTab * pTab = tabByPage(pPage);
+	if (pTab == NULL)
+	{
+		return;
+	}
+	pTab->slotSetLabel(newName.toUpper());
 }
 
 //virtual
@@ -499,22 +705,6 @@ bool PageTabBar::sceneEvent(QEvent* event)
 	else if (event->type() == QEvent::Gesture) {
 		QGestureEvent* ge = static_cast<QGestureEvent*>(event);
 		QGesture * g = 0;
-//		QGesture* g = ge->gesture(Qt::TapGesture);
-//		if (g) {
-//			QTapGesture* tap = static_cast<QTapGesture*>(g);
-//			if (tap->state() == Qt::GestureFinished) {
-//				tapGestureEvent(tap);
-//			}
-//			return true;
-//		}
-//		g = ge->gesture(Qt::TapAndHoldGesture);
-//		if (g) {
-//			QTapAndHoldGesture* hold = static_cast<QTapAndHoldGesture*>(g);
-//			if (hold->state() == Qt::GestureFinished) {
-//				tapAndHoldGestureEvent(hold);
-//			}
-//			return true;
-//		}
 		g = ge->gesture((Qt::GestureType) SysMgrGestureFlick);
 		if (g) {
 			FlickGesture* flick = static_cast<FlickGesture*>(g);

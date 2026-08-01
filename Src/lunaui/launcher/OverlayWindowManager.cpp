@@ -25,6 +25,7 @@
 #include "OverlayWindowManager_p.h"
 
 #include "CardWindowManager.h"
+#include "dimensionslauncher.h"
 
 #include <string>
 #include <algorithm>
@@ -57,6 +58,7 @@
 #include "webkitpalmsettings.h"
 #include "HostBase.h"
 #include "SystemUiController.h"
+#include "CardWindowManager.h"
 #include "HostWindow.h"
 #include "Logging.h"
 #include "Time.h"
@@ -191,6 +193,7 @@ OverlayWindowManager::OverlayWindowManager(int maxWidth, int maxHeight)
 	, m_ignoreKeyDueToSpeedDialEvent(false)
 	, m_keyDown(0)
 	, m_pendingLauncherRecreate(false)
+	, m_queueWave(false)
 {
 	setObjectName("OverlayWindowManager");
 
@@ -219,6 +222,8 @@ OverlayWindowManager::OverlayWindowManager(int maxWidth, int maxHeight)
 
 	////////// LAUNCHER CONTROL SIGNALS
 	connect(SystemUiController::instance(),SIGNAL(signalToggleLauncher()),
+			this,SLOT(slotSystemAPIToggleLauncher()));
+	connect(CardWindowManager::instance(),SIGNAL(signalToggleLauncher()),
 			this,SLOT(slotSystemAPIToggleLauncher()));
 
 	grabGesture((Qt::GestureType) SysMgrGestureFlick);
@@ -852,8 +857,15 @@ void OverlayWindowManager::keyPressEvent(QKeyEvent* event)
 		}
 	}
 	else if (!SystemUiController::instance()->isCardWindowMaximized()) {
+		//keys belong to the launcher's modal ui while it is up (group overlay,
+		// rename dialog); don't let them trigger universal search
+		LauncherObject * pLauncher = LauncherObject::primaryInstance();
+		if (pLauncher && pLauncher->modalUiShowing())
+		{
+			return;
+		}
 		// Launch global search -- forward the text to the Universal Search app
-		if (event->key() == Qt::Key_Shift || 
+		if (event->key() == Qt::Key_Shift ||
 			event->key() == Qt::Key_Alt ||
 			((event->key() >= Qt::Key_Space && event->key() <= Qt::Key_ydiaeresis)))
 		{
@@ -1032,8 +1044,16 @@ void OverlayWindowManager::setupSearchPill()
 		PixmapObject * pIconPmo = PixmapObjectLoader::instance()->quickLoad(
 				QString(GraphicsSettings::DiUiGraphicsSettings()->graphicsAssetBaseDirectory + SEARCHPILL_ICON_FILEPATH)
 		);
-
-		quint32 width = qMax(LayoutSettings::settings()->searchPillWidth,(quint32)(pIconPmo ? pIconPmo->width() : 0));
+		
+		quint32 width;
+		
+		//If we're in tabletUi, use the search pill width value from LayoutSettings
+		if(Settings::LunaSettings()->tabletUi)
+			width = LayoutSettings::settings()->searchPillWidthPctScreenRelative * qMin(boundingRect().height(), boundingRect().width());
+		//Otherwise, set it to 0.975% of the screen width, webOS phone style
+		else
+			width = 0.975 * qMin(boundingRect().height(), boundingRect().width());
+		
 		quint32 height = pNormalBgPmo->height();
 		QRectF pillGeom = DimensionsGlobal::realRectAroundRealPoint(QSize(width - (width %2),height - (height %2)));
 		m_searchPill = new SearchPill(pNormalBgPmo, pIconPmo, pillGeom,this);
@@ -1073,7 +1093,10 @@ void OverlayWindowManager::setupDock()
 	setupDockStateMachine();
 
 	if(m_dockWin->quickLaunchBar())
+	{
 		connect(m_dockWin->quickLaunchBar(),SIGNAL(signalToggleLauncher()),this,SLOT(slotSystemAPIToggleLauncher()));
+		connect(m_dockWin->quickLaunchBar(),SIGNAL(signalHideDock()),this,SLOT(slotHideDock()));
+	}
 
 	return;
 }
@@ -1100,6 +1123,10 @@ void OverlayWindowManager::slotSystemAPIToggleLauncher()
 	{
 		//it's up, signal that I want it down
 		Q_EMIT signalFSMHideLauncher();
+		
+		//if there's a card maximized, hide the search pill
+		if(CardWindowManager::instance()->isMaximized())
+			Q_EMIT signalFSMHideSearchPill();
 	}
 }
 
@@ -1217,8 +1244,24 @@ void OverlayWindowManager::slotPositiveSpaceChangeFinished(const QRect& r)
 {
 }
 
-void OverlayWindowManager::slotPositiveSpaceChanged(const QRect& r) 
+void OverlayWindowManager::slotPositiveSpaceChanged(const QRect& r)
 {
+	//The launcher does not follow the ime's positive-space changes. Its modal panels
+	// (group overlay, rename dialog) position themselves clear of the keyboard, and
+	// their dim shields must keep covering the whole launcher, so shrinking it just
+	// opened a gap. Ignoring only the shrink was not enough either: when the keyboard
+	// hides, positive space is ANIMATED back up, and applying those intermediate
+	// heights grew the launcher step by step - the visible "bounce".
+	//So: while the keyboard is up, and while the space animates back afterwards
+	// (height still below what the launcher last used), leave the launcher alone.
+	// A width change means a rotation, which must always be applied.
+	if ((r.width() == m_launcherAppliedSpaceSize.width())
+		&& (IMEController::instance()->isIMEOpened()
+			|| (r.height() < m_launcherAppliedSpaceSize.height())))
+	{
+		return;
+	}
+	m_launcherAppliedSpaceSize = r.size();
 	if (DimensionsUI::primaryInstance())
 	{
 		DimensionsUI::primaryInstance()->resize(r.width(),r.height());
@@ -1338,6 +1381,13 @@ void OverlayWindowManager::slotAnimateShowDock()
 		return;
 	}
 
+	//Make sure wave is false to prevent the mustache appearing at the wrong time
+	if(m_dockWin->quickLaunchBar()->wave())
+	{
+		m_dockWin->quickLaunchBar()->setWave(false);
+		m_dockWin->quickLaunchBar()->rearrangeIcons(false);
+	}
+	
 	if((scene() != NULL) && (scene()->mouseGrabberItem() == this))
 		ungrabMouse();
 
@@ -1362,7 +1412,10 @@ void OverlayWindowManager::slotAnimateShowDock()
 
 	m_dockPosAnimation->stop();
 	m_dockPosAnimation->setStartValue(m_dockWin->pos());
-	m_dockPosAnimation->setEndValue(m_dockShownPos);
+	if(!m_queueWave)
+		m_dockPosAnimation->setEndValue(m_dockShownPos);
+	else
+		m_dockPosAnimation->setEndValue(m_dockShownPos+QPoint(0,16));
 	m_dockPosAnimation->start();
 }
 
@@ -1470,6 +1523,18 @@ void OverlayWindowManager::dockAnimationFinished()
 			DimensionsUI::primaryInstance()->slotQuicklaunchFullyClosed();
 		}
 		m_dockWin->setVisible(false);
+		m_dockWin->quickLaunchBar()->setWave(false);
+		m_dockWin->quickLaunchBar()->rearrangeIcons(false);
+		if(CardWindowManager::instance()->isMinimized() || SystemUiController::instance()->isLauncherShown())
+		{
+			slotShowDock();
+			if(m_queueWave)
+			{
+				m_dockWin->quickLaunchBar()->setWave(true);
+				m_dockWin->quickLaunchBar()->rearrangeIcons(false);
+				m_queueWave = false;
+			}
+		}
 	}
 	else
 	{
@@ -1503,6 +1568,26 @@ void OverlayWindowManager::setDockShown(bool shown)
 {
 	m_dockShown = shown;
 	SystemUiController::instance()->setDockShown(shown);
+}
+
+void OverlayWindowManager::animateWaveDock(QPoint pos)
+{
+	if(!m_dockWin) {
+		return;
+	}
+
+	if(!m_dockWin->quickLaunchBar()->wave())
+		m_dockWin->quickLaunchBar()->setWave(true);
+	
+	if(m_dockWin->quickLaunchBar()->wavePos() != pos.x())
+	{
+		m_dockWin->quickLaunchBar()->setWavePos(pos.x());
+		m_dockWin->quickLaunchBar()->rearrangeIcons(false);
+	}
+	
+	if(m_dockWin->pos().y() != pos.y() && m_dockPosAnimation->state() == QAbstractAnimation::Stopped) {
+		m_dockWin->setPos(QPoint(m_dockWin->pos().x(),pos.y()));
+	}
 }
 
 bool OverlayWindowManager::launcherVisible() const

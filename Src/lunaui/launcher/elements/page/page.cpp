@@ -70,6 +70,8 @@
 #define PAGE_BOTTOM_SHADOW_PIX_FILEPATH QString("quicklaunch-shadow.png")
 
 const char * Page::PageNamePropertyName = "pagename";
+const char * Page::PageNameUserSetPropertyName = "pagenameuserset";
+const char * Page::PageUserCreatedPropertyName = "pageusercreated";
 const char * Page::PageIndexPropertyName = "pageuiindex";
 const char * Page::PageDesignatorPropertyName = "pagedesignator";
 
@@ -191,8 +193,15 @@ Page::~Page()
 
 void Page::setPageName(const QString& v)
 {
+	if (m_pageName == v)
+	{
+		return;
+	}
+	QString oldName = m_pageName;
 	m_pageName = v;
 	setObjectName(v);
+	Q_EMIT signalPageNameChanged(oldName,v);
+	Q_EMIT signalPageNameChanged();
 }
 
 //static

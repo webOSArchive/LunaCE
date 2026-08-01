@@ -1,6 +1,7 @@
 /* @@@LICENSE
 *
 *      Copyright (c) 2008-2012 Hewlett-Packard Development Company, L.P.
+*                    2012 Måns Andersson <mail@mansandersson.se>
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -65,6 +66,19 @@ Preferences::Preferences()
 	, m_playFeedbackSounds(true)
 	, m_sysUiNoHomeButtonMode(true)
 	, m_sysUiEnableNextPrevGestures(false)
+	, m_sysUiEnableAppSwitchGestures(false)
+	, m_sysUiGestureDetection(0)
+	, m_sysUiStatusBarSlide(false)
+	, m_sysUiEnableStatusBarSearch(false)
+	, m_sysUiEnableMaximizeEdges(false)
+	, m_sysUiShowDeviceNameAsCarrierText(false)
+	, m_sysUiUseCustomCarrierString(false)
+	, m_sysUiCarrierString("HP webOS")
+	, m_sysUiEnableSpreadGesture(false)
+	, m_sysUiEnableMiniCards(false)
+	, m_sysUiEnableZoomGesture(false)
+	, m_sysUiEnableWaveLauncher(false)
+	, m_sysUiEnableGestureDeadzone(true)
 	, m_lockTimeout(0)
 	, m_lsHandle(0)
 	, m_imeEnabled(false)
@@ -80,9 +94,12 @@ Preferences::Preferences()
 	, m_show3GForEvdo(false)
 	, m_enableVoiceDial(false)
     , m_rotationLock(OrientationEvent::Orientation_Invalid)
+    , m_infiniteCardCyclingEnabled(false)
+	, m_tabbedCardsEnabled(false)
 	, m_muteOn(false)
 	, m_enableALS(true)
 	, m_deviceName("HP webOS")
+	, m_showReticleAnimation(true)
 {
 	init();
 	registerService();
@@ -572,15 +589,32 @@ bool Preferences::serverConnectCallback(LSHandle *sh, LSMessage *message, void *
 													   \"imeType\", \
 													   \"sysUiNoHomeButtonMode\", \
 													   \"sysUiEnableNextPrevGestures\", \
+													   \"sysUiGestureDetection\", \
+													   \"sysUiEnableAppSwitchGestures\", \
+													   \"sysUiStatusBarSlide\", \
+													   \"sysUiEnableStatusBarSearch\", \
+													   \"sysUiEnableMaximizeEdges\", \
+													   \"sysUiShowDeviceNameAsCarrierText\", \
+													   \"sysUiUseCustomCarrierString\", \
+													   \"sysUiCarrierString\", \
+													   \"sysUiEnableSpreadGesture\", \
+													   \"sysUiEnableMiniCards\", \
+													   \"sysUiEnableZoomGesture\", \
+													   \"sysUiEnableWaveLauncher\", \
+													   \"sysUiEnableGestureDeadzone\", \
 													   \"airplaneMode\", \
 													   \"hideWANAlert\", \
 													   \"roamingIndicator\", \
 													   \"dualRSSI\", \
 													   \"lockTimeout\",\
 													   \"rotationLock\",\
+													   \"infiniteCardCyclingEnabled\",\
+													   \"tabbedCardsEnabled\",\
+													   \"showReticleAnimation\",\
 													   \"muteSound\",\
 													   \"" PALM_VIRTUAL_KEYBOARD_PREFS "\",\
 													   \"" PALM_VIRTUAL_KEYBOARD_SETTINGS "\",\
+													   \"" PALM_VIRTUAL_KEYBOARD_SELECTED_KEYMAPS "\",\
 					 	 	 	 	 	 	 	 	   \"enableVoiceCommand\",\
 													   \"enableALS\",\
 													   \"deviceName\" ]}",
@@ -848,6 +882,112 @@ bool Preferences::getPreferencesCallback(LSHandle *sh, LSMessage *message, void 
 #endif
 		}
 	}
+	
+	label = json_object_object_get(json, "sysUiEnableAppSwitchGestures");
+	if (label && !is_error(label)) {
+		
+		if (prefObjPtr)
+			prefObjPtr->m_sysUiEnableAppSwitchGestures = json_object_get_boolean(label);
+	}
+	
+	label = json_object_object_get(json, "sysUiGestureDetection");
+	if (label && !is_error(label)) {
+		
+		if (prefObjPtr)
+			prefObjPtr->m_sysUiGestureDetection = json_object_get_int(label);
+	}
+	
+	label = json_object_object_get(json, "sysUiEnableMaximizeEdges");
+	if (label && !is_error(label)) {
+		
+		if (prefObjPtr)
+			prefObjPtr->m_sysUiEnableMaximizeEdges = json_object_get_boolean(label);
+	}
+
+	label = json_object_object_get(json, "sysUiStatusBarSlide");
+	if (label && !is_error(label)) {
+
+		if (prefObjPtr)
+			prefObjPtr->m_sysUiStatusBarSlide = json_object_get_boolean(label);
+	}
+
+	label = json_object_object_get(json, "sysUiEnableStatusBarSearch");
+	if (label && !is_error(label)) {
+
+		if (prefObjPtr)
+			prefObjPtr->m_sysUiEnableStatusBarSearch = json_object_get_boolean(label);
+	}
+
+	label = json_object_object_get(json, "tabbedCardsEnabled");
+	if (label && !is_error(label)) {
+		if (prefObjPtr) {
+			prefObjPtr->m_tabbedCardsEnabled = json_object_get_int(label);
+		}
+	}
+
+	label = json_object_object_get(json, "sysUiShowDeviceNameAsCarrierText");
+	if (label && !is_error(label)) {
+
+		if (prefObjPtr) {
+			prefObjPtr->m_sysUiShowDeviceNameAsCarrierText = json_object_get_boolean(label);
+		}
+	}
+
+	label = json_object_object_get(json, "sysUiUseCustomCarrierString");
+	if (label && !is_error(label)) {
+		if (prefObjPtr) {
+			prefObjPtr->m_sysUiUseCustomCarrierString = json_object_get_boolean(label);
+		}
+	}
+
+	label = json_object_object_get(json, "sysUiCarrierString");
+	if (label && !is_error(label)) {
+		if (prefObjPtr) {
+			prefObjPtr->m_sysUiCarrierString = json_object_get_string(label);
+		}
+	}
+
+	label = json_object_object_get(json, "sysUiEnableSpreadGesture");
+	if (label && !is_error(label)) {
+		if (prefObjPtr) {
+			prefObjPtr->m_sysUiEnableSpreadGesture = json_object_get_boolean(label);
+		}
+	}
+
+	label = json_object_object_get(json, "sysUiEnableMiniCards");
+	if (label && !is_error(label)) {
+		if (prefObjPtr) {
+			prefObjPtr->m_sysUiEnableMiniCards = json_object_get_boolean(label);
+		}
+	}
+
+	label = json_object_object_get(json, "sysUiEnableZoomGesture");
+	if (label && !is_error(label)) {
+		if (prefObjPtr) {
+			prefObjPtr->m_sysUiEnableZoomGesture = json_object_get_boolean(label);
+		}
+	}
+
+	label = json_object_object_get(json, "sysUiEnableWaveLauncher");
+	if (label && !is_error(label)) {
+		if (prefObjPtr) {
+			prefObjPtr->m_sysUiEnableWaveLauncher = json_object_get_boolean(label);
+		}
+	}
+
+	label = json_object_object_get(json, "sysUiEnableGestureDeadzone");
+	if (label && !is_error(label)) {
+		if (prefObjPtr) {
+			prefObjPtr->m_sysUiEnableGestureDeadzone = json_object_get_boolean(label);
+		}
+	}
+
+	label = json_object_object_get(json, "showReticleAnimation");
+	if (label && !is_error(label)) {
+		if (prefObjPtr) {
+			prefObjPtr->m_showReticleAnimation = json_object_get_boolean(label);
+		}
+	}
 
 	label = json_object_object_get(json, "lockTimeout");
 	if (label && !is_error(label) && json_object_is_type(label, json_type_int)) {
@@ -886,6 +1026,13 @@ bool Preferences::getPreferencesCallback(LSHandle *sh, LSMessage *message, void 
 			}
 		}
 	}
+
+  label = json_object_object_get(json, "infiniteCardCyclingEnabled");
+  if (label && !is_error(label)) {
+    if (prefObjPtr) {
+      prefObjPtr->m_infiniteCardCyclingEnabled = json_object_get_int(label);
+    }
+  }
 
 	label = json_object_object_get(json, "airplaneMode");
 	if (label && !is_error(label) && json_object_is_type(label, json_type_boolean)) {
@@ -930,13 +1077,26 @@ bool Preferences::getPreferencesCallback(LSHandle *sh, LSMessage *message, void 
 		}
 	}
 
+	g_warning("Load virtual keyboard settings");
 	label = json_object_object_get(json, PALM_VIRTUAL_KEYBOARD_SETTINGS);
 	if ((label) && (!is_error(label)))
+	{
 		VirtualKeyboardPreferences::instance().virtualKeyboardSettingsChanged(json_object_get_string(label));
+	}
 
+	g_warning("Load virtual keyboard preferences");
 	label = json_object_object_get(json, PALM_VIRTUAL_KEYBOARD_PREFS);
 	if ((label) && (!is_error(label)))
+	{
 		VirtualKeyboardPreferences::instance().virtualKeyboardPreferencesChanged(json_object_get_string(label));
+	}
+	
+	g_warning("Load virtual keyboard selected keymap");
+	label = json_object_object_get(json, PALM_VIRTUAL_KEYBOARD_SELECTED_KEYMAPS);
+	if ((label) && (!is_error(label)))
+	{
+		VirtualKeyboardPreferences::instance().virtualKeyboardSelectedKeymapsChanged(json_object_get_string(label));
+	}
 
 	label = json_object_object_get(json, "enableVoiceCommand");
 	if (label && !is_error(label)) {
@@ -972,7 +1132,9 @@ Done:
 
 	if (json && !is_error(json))
 		json_object_put(json);
-
+		
+	Q_EMIT prefObjPtr->signalGetPrefsComplete();
+			
 	return true;
 }
 

@@ -21,6 +21,7 @@
 
 #include "iconheap.h"
 #include "icon.h"
+#include "groupicon.h"
 #include "pixmaploader.h"
 #include "gfxsettings.h"
 #include "stringtranslator.h"
@@ -347,6 +348,33 @@ IconBase * IconHeap::makeIconConstrained(const QString& mainIconFilePath,const Q
 IconBase * IconHeap::makeIconConstrainedStandardFrameAndDecorators(const QString& mainIconFilePath,const QSize& size,bool limitOnly)
 {
 	return makeIconConstrained(mainIconFilePath,s_standardFrameFilePath,QList<QString>(), s_standardFeedbackFilePath,size,limitOnly);
+}
+
+//static
+GroupIcon * IconHeap::makeGroupIcon(const QString& groupName)
+{
+	PixmapObject * pFrameIconPmo = PixmapObjectLoader::instance()->quickLoad(s_standardFrameFilePath);
+	if (!pFrameIconPmo)
+	{
+		return 0;
+	}
+	PixmapObject * pLaunchFeedbackPmo = PixmapObjectLoader::instance()->quickLoad(s_standardFeedbackFilePath);
+	if (!pLaunchFeedbackPmo)
+	{
+		return 0;
+	}
+	PixmapObject * pMainPmo = GroupIcon::renderCompositePmo(QList<IconBase *>());
+	GroupIcon * pIcon = GroupIcon::groupIconFromPix(pFrameIconPmo,pMainPmo,pLaunchFeedbackPmo,0);
+	if (!pIcon)
+	{
+		delete pMainPmo;
+		return 0;
+	}
+	pIcon->slotChangeIconFrameVisibility(false);
+	pIcon->setGroupName(groupName);
+	//register so location tagging and uid lookups work on it
+	iconHeap()->addIcon(pIcon);
+	return pIcon;
 }
 
 ////private:

@@ -89,6 +89,7 @@
 
 #include "NativeAlertManager.h"
 #include "SingleClickGestureRecognizer.h"
+#include "BezelGestureRecognizer.h"
 #include "QtUtils.h"
 
 
@@ -424,6 +425,7 @@ WindowServer::WindowServer()
 		viewportWidget = new QWidget;
 
 	QGestureRecognizer::registerRecognizer(new SingleClickGestureRecognizer);
+	QGestureRecognizer::registerRecognizer(new BezelGestureRecognizer);
 
 	viewportWidget->setAttribute(Qt::WA_AcceptTouchEvents);
 	viewportWidget->setAttribute(Qt::WA_OpaquePaintEvent, true);
@@ -458,7 +460,7 @@ WindowServer::WindowServer()
 	viewportWidget->grabGesture(Qt::PinchGesture);
 	viewportWidget->grabGesture((Qt::GestureType) SysMgrGestureFlick);
 	viewportWidget->grabGesture((Qt::GestureType) SysMgrGestureSingleClick);
-	viewportWidget->grabGesture((Qt::GestureType) SysMgrGestureScreenEdgeFlick);
+	viewportWidget->grabGesture((Qt::GestureType) BezelGestureType);
 
 	m_uiRootItem.setBoundingRect(QRectF(-SystemUiController::instance()->currentUiWidth()/2, -SystemUiController::instance()->currentUiHeight()/2,
 						         SystemUiController::instance()->currentUiWidth(), SystemUiController::instance()->currentUiHeight()));
@@ -694,7 +696,7 @@ bool WindowServer::processSystemShortcut(QEvent* event)
 				}
 				else {
 					unsigned int curTime = Time::curTimeMs();
-					if (homeKeyDown && (curTime - powerKeyDownTimeStamp) <= 3000) {
+					if (homeKeyDown && (curTime - powerKeyDownTimeStamp) <= 500) {
 						takeAndSaveScreenShot();
 						QKeyEvent* keyEvent = static_cast<QKeyEvent*>(event);
 						keyEvent->setModifiers(keyEvent->modifiers() | Qt::GroupSwitchModifier);
@@ -720,7 +722,7 @@ bool WindowServer::processSystemShortcut(QEvent* event)
 				}
 				else {
 					unsigned int curTime = Time::curTimeMs();
-					if (powerKeyDown && (curTime - homeKeyDownTimeStamp) <= 3000) {
+					if (powerKeyDown && (curTime - homeKeyDownTimeStamp) <= 500) {
 						takeAndSaveScreenShot();
 						QKeyEvent* keyEvent = static_cast<QKeyEvent*>(event);
 						keyEvent->setModifiers(keyEvent->modifiers() | Qt::GroupSwitchModifier);

@@ -32,6 +32,7 @@
 
 class PixmapObject;
 class IconBase;
+class GroupIcon;
 
 //IconAttributes is essentially just a public version of IconWrapper
 // (use it to be able to filter out stuff returned to clients while being able to keep some
@@ -129,6 +130,9 @@ public:
 										const QSize& size,bool limitOnly=true);
 
 	static IconBase * makeIconConstrainedStandardFrameAndDecorators(const QString& mainIconFilePath,const QSize& size,bool limitOnly=true);
+
+	//makes an (empty) app-group icon with the standard frame + feedback gfx and registers it in the heap
+	static GroupIcon * makeGroupIcon(const QString& groupName);
 
 	//// SOME COMMONLY USED ICON IMAGES
 	// TODO: this belongs in a pixmap (pmo) heap. Since I'm running short on time and don't have any other need to write one at the moment

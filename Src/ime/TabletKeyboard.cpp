@@ -1,6 +1,7 @@
 /* @@@LICENSE
 *
 *      Copyright (c) 2010-2012 Hewlett-Packard Development Company, L.P.
+*                    2012 Måns Andersson <mail@mansandersson.se>
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -119,6 +120,7 @@ TabletKeyboard::TabletKeyboard(IMEDataInterface * dataInterface) : VirtualKeyboa
 	m_shiftDown(false),
 	m_symbolDown(false),
 	m_resizeMode(false),
+	m_trackballMode(false),
 	m_lastShiftTime(0),
 	m_lastUnlockTime(0),
 	m_keyboardTopPading(0),
@@ -136,6 +138,9 @@ TabletKeyboard::TabletKeyboard(IMEDataInterface * dataInterface) : VirtualKeyboa
 	m_shortcutsHandler(dataInterface),
 	m_diamondOptimization(true),
 	m_idleInit(false),
+	m_trackballDelta(0,0),
+	m_trackballVelocity(0.0f,0.0f),
+	m_trackballTimer(this),
 	m_backspace("icon-delete.png"),
 	m_shift("icon-shift.png"),
 	m_shift_on("icon-shift-on.png"),
@@ -155,6 +160,8 @@ TabletKeyboard::TabletKeyboard(IMEDataInterface * dataInterface) : VirtualKeyboa
 	m_emoticon_yuck_small("/usr/palm/emoticons/emoticon-yuck.png"),
 	m_emoticon_gasp_small("/usr/palm/emoticons/emoticon-gasp.png"),
 	m_emoticon_heart_small("/usr/palm/emoticons/emoticon-heart.png"),
+	m_trackball("/usr/palm/sysmgr/images/statusBar/slider-handle.png"),
+	m_trackballArrows("/usr/palm/sysmgr/images/menu-arrow-down.png"),
 	m_background("keyboard-bg.png"),
 	m_drag_handle("drag-handle.png"),
 	m_drag_highlight("drag-highlight.png"),
@@ -190,6 +197,7 @@ TabletKeyboard::TabletKeyboard(IMEDataInterface * dataInterface) : VirtualKeyboa
 	connect(&m_IMEDataInterface->m_editorState, SIGNAL(valueChanged(const PalmIME::EditorState &)), SLOT(editorStateChanged(const PalmIME::EditorState &)));
 	connect(&m_IMEDataInterface->m_autoCap, SIGNAL(valueChanged(const bool &)), SLOT(autoCapChanged(const bool &)));
 	connect(&m_timer, SIGNAL(timeout()), this, SLOT(repeatChar()));
+	connect(&m_trackballTimer, SIGNAL(timeout()), this, SLOT(tickTrackball()));
 
 	m_candidateBar.font().setPixelSize(24);
 
@@ -243,22 +251,24 @@ void TabletKeyboard::setSymbolMode(TabletKeymap::ESymbolMode symbolMode)
 		keyboardLayoutChanged();
 }
 
-void TabletKeyboard::setKeyboardCombo(const std::string & layoutName, const std::string & languageName, bool showLanguageKey)
+void TabletKeyboard::setKeyboardCombo(const std::string & keyboardLanguage, const std::string & keymap, const std::string & autoCorrectLanguage, bool hasMoreThanOneKeyboardLayout)
 {
-	const TabletKeymap::LayoutFamily * layoutFamily = TabletKeymap::LayoutFamily::findLayoutFamily(layoutName.c_str(), false);	// get default if not found
+	const TabletKeymap::LayoutFamily * layoutFamily = TabletKeymap::LayoutFamily::findLayoutFamily(keyboardLanguage.c_str(), false);	// get default if not found
 	bool changed = false;
 
-	if (m_keymap.setLayoutFamily(layoutFamily))
+	bool layoutFamilyChanged = m_keymap.setLayoutFamily(layoutFamily);
+	bool keymapChanged = m_keymap.setKeymap(keymap);
+	if (layoutFamilyChanged || keymapChanged)
 	{
 		changed = true;
 		KeyLocationRecorder::instance().keyboardSizeChanged(m_keymap.layoutName(), m_keymap.rect());
 	}
 	syncKeymap();
+	
+	m_keymap.setHasMoreThanOneLayoutFamily(hasMoreThanOneKeyboardLayout);
 
-	if (m_keymap.setLanguageName(showLanguageKey ? languageName : ""))
-		changed = true;
-
-	m_candidateBar.setLanguage(languageName);
+	m_candidateBar.setLanguage(autoCorrectLanguage);
+	m_keymap.setAutoCorrectLanguage(autoCorrectLanguage);
 
 	if (changed)
 		keyboardLayoutChanged();
@@ -276,7 +286,7 @@ void TabletKeyboard::syncKeymap()
 	}
 	if (m_candidateBarLayoutOutdated && m_generatedKeymapLayout)
 	{
-		if (m_candidateBar.loadKeyboardLayoutFile(IME_KDB_XML_FILENAME, m_generatedKeymapLayout->m_primaryID, m_generatedKeymapLayout->m_secondaryID))
+		if (m_candidateBar.loadKeyboardLayoutFile(IME_KDB_XML_FILENAME, m_generatedKeymapLayout->m_currentKeymap->m_primaryID, m_generatedKeymapLayout->m_currentKeymap->m_secondaryID))
 			m_candidateBarLayoutOutdated = false;
 	}
 }
@@ -584,6 +594,51 @@ void TabletKeyboard::updateTouch(int id, QPointF position)
 		touch.m_lastPosition = touchPosition;
 		touch.m_inCandidateBar = inCandidatebar;
 	}
+	if (m_trackballMode)
+	{
+		QPointF moved = touchPosition - touch.m_lastPosition;
+		m_trackballDelta += moved;
+			
+		if(m_trackballDelta.x() >= 15)
+		{
+			m_trackballDelta = QPointF(0,0);
+			if(m_trackballVelocity.x() < 1.0f)
+				m_trackballVelocity += QPointF(0.1f,0.0f);
+			makeSound(Qt::Key_Backspace);
+			sendKeyDownUp(Qt::Key_Right, m_keymap.isShiftDown() ? Qt::ShiftModifier : Qt::NoModifier);
+		}
+
+		if(m_trackballDelta.x() <= -15)
+		{
+			m_trackballDelta = QPointF(0,0);
+			if(m_trackballVelocity.x() > -1.0f)
+				m_trackballVelocity -= QPointF(0.1f,0.0f);
+			makeSound(Qt::Key_Backspace);
+			sendKeyDownUp(Qt::Key_Left, m_keymap.isShiftDown() ? Qt::ShiftModifier : Qt::NoModifier);
+		}
+			
+		if(m_trackballDelta.y() <= -15)
+		{
+			m_trackballDelta = QPointF(0,0);
+			if(m_trackballVelocity.y() > -1.0f)
+				m_trackballVelocity -= QPointF(0.0f,0.1f);
+			makeSound(Qt::Key_Backspace);
+			sendKeyDownUp(Qt::Key_Up, m_keymap.isShiftDown() ? Qt::ShiftModifier : Qt::NoModifier);
+		}
+			
+		if(m_trackballDelta.y() >= 15)
+		{
+			m_trackballDelta = QPointF(0,0);
+			if(m_trackballVelocity.y() < 1.0f)
+				m_trackballVelocity += QPointF(0.0f,0.1f);
+			makeSound(Qt::Key_Backspace);
+			sendKeyDownUp(Qt::Key_Down, m_keymap.isShiftDown() ? Qt::ShiftModifier : Qt::NoModifier);
+		}
+		
+		touch.m_lastPosition = touchPosition;
+		triggerRepaint();
+		return;
+	}
 	if (m_resizeMode)
 	{
 		if (!touch.m_consumed)
@@ -663,7 +718,13 @@ void TabletKeyboard::updateTouch(int id, QPointF position)
 			}
 			if (newTouch)
 			{
-				if (newKey == cKey_ResizeHandle)
+				if (newKey == cKey_Trackball)
+				{
+					m_trackballMode = true;
+					m_trackballTimer.stop();
+					clearExtendedkeys();
+				}
+				else if (newKey == cKey_ResizeHandle)
 				{
 					m_resizeMode = true;
 					PixmapCache::instance().suspendPurge(true);
@@ -742,8 +803,8 @@ void TabletKeyboard::handleKey(UKey key, QPointF where)
 	}
 	else if (UKeyIsKeyboardComboKey(key))
 	{
-		int index = key - cKey_KeyboardComboChoice_First;
-		VirtualKeyboardPreferences::instance().selectKeyboardCombo(index);
+		QString keymap = m_keymap.getKeyDisplayString(key, false);
+		VirtualKeyboardPreferences::instance().selectKeymap(keymap.toStdString());
 	}
 	else
 	{
@@ -968,7 +1029,7 @@ void TabletKeyboard::touchEvent(const QTouchEvent& te)
 				Qt::TouchPointState state = touchPoint.state();
 				if (state == Qt::TouchPointReleased)
 				{
-					if (!m_resizeMode)
+					if (!m_trackballMode && !m_resizeMode)
 						releaseTouch(touchPoint.id());
 					m_touches.erase(touchPoint.id());
 				}
@@ -988,7 +1049,10 @@ void TabletKeyboard::touchEvent(const QTouchEvent& te)
 			}
 		}
 		else
+		{
 			g_warning("TabletKeyboard::touchEvent: hidden (probably being hidden...), so we will ignore these touches.");
+			stopRepeat();
+		}
 		// everything is released: make sure we have nothing left in our records...
 		if (te.type() == QEvent::TouchEnd)
 		{
@@ -1000,7 +1064,11 @@ void TabletKeyboard::touchEvent(const QTouchEvent& te)
 					m_candidateBar.endTrace(iter->id());
 				m_touches.clear();
 			}
-			stopRepeat();
+			if (m_trackballMode)
+			{
+				m_trackballMode = false;
+				m_trackballTimer.start(62);
+			}
 			if (m_resizeMode)
 			{
 				m_resizeMode = false;
@@ -1019,14 +1087,6 @@ void TabletKeyboard::tapEvent(const QPoint& tapPt)
 	g_debug("tapEvent: %d, %d", tapPt.x(), tapPt.y());
 #endif
 	m_candidateBar.tapEvent(tapPt);
-}
-
-void TabletKeyboard::screenEdgeFlickEvent()
-{
-	// Mark all touches as consumed
-	for (std::map<int, Touch>::iterator iter = m_touches.begin(); iter != m_touches.end(); ++iter) {
-		iter->second.m_consumed = true;
-	}
 }
 
 void TabletKeyboard::repeatChar()
@@ -1064,10 +1124,27 @@ void TabletKeyboard::repeatChar()
 		stopRepeat();
 }
 
+void TabletKeyboard::tickTrackball()
+{
+	if(m_trackballVelocity.x() == 0.0f && m_trackballVelocity.y() == 0.0f) {
+		m_trackballTimer.stop();
+		triggerRepaint();
+		return;
+	}
+	
+	if(m_trackballVelocity.x() > 0.1f) m_trackballVelocity -= QPointF(0.1f,0.0f);
+	else if(m_trackballVelocity.x() < -0.1f) m_trackballVelocity += QPointF(0.1f,0.0f);
+	
+	if(m_trackballVelocity.y() > 0.1f) m_trackballVelocity -= QPointF(0.0f,0.1f);
+	else if(m_trackballVelocity.y() < -0.1f) m_trackballVelocity += QPointF(0.0f,0.1f);
+	
+	triggerRepaint();
+}
+
 bool TabletKeyboard::setExtendedKeys(QPoint keyCoord, bool cancelIfSame)
 {
 	const UKey * newExtended = m_keymap.getExtendedChars(keyCoord);
-	if (cancelIfSame && newExtended == m_extendedKeys)
+	if ((cancelIfSame && newExtended == m_extendedKeys) || newExtended == NULL || newExtended[0] == cKey_None)
 		return false;
 	m_extendedKeys = newExtended;
 	if (m_extendedKeys)
@@ -1129,6 +1206,8 @@ void TabletKeyboard::getExtendedPopupSpec(int & outCellCount, int & outLineCount
 
 bool TabletKeyboard::canRepeat(UKey key) const
 {
+	if(m_extendedKeys && m_extendedKeyShown == cKey_None) return false;
+	
 	return (key == Qt::Key_Space || key == Qt::Key_Backspace || key == Qt::Key_Left || key == Qt::Key_Right);
 }
 
@@ -1187,7 +1266,10 @@ void TabletKeyboard::paint(QPainter & painter)
 			{
 				if (key == Qt::Key_Shift)
 					drawKeyBackground(painter, r, keyCoord, key, false, count);
-				drawKeyCap(&painter, renderer, r, keyCoord, key, false);
+				if (key != cKey_Trackball)
+					drawKeyCap(&painter, renderer, r, keyCoord, key, false);
+				else //Draw trackball
+					drawKeyCap(&painter, renderer, r, keyCoord, key, false);
 			}
 		}
 	}
@@ -1213,8 +1295,13 @@ void TabletKeyboard::paint(QPainter & painter)
 						painter.setClipRect(r);
 						painter.drawPixmap(r.left(), keyboardFrame.top(), r.width(), keyboardFrame.height(), m_background.pixmap());
 						painter.setClipping(false);
-						drawKeyBackground(painter, r, touch.m_keyCoordinate, key, true, count);
-						drawKeyCap(&painter, renderer, r, touch.m_keyCoordinate, key, true);
+						if(key != cKey_Trackball)
+						{
+							drawKeyBackground(painter, r, touch.m_keyCoordinate, key, true, count);
+							drawKeyCap(&painter, renderer, r, touch.m_keyCoordinate, key, true);
+						}
+						else //Draw trackball
+							drawKeyCap(&painter, renderer, r, touch.m_keyCoordinate, key, false);
 						//g_debug("'%s' drawn pressed, consumed: %d", QString(key).toUtf8().data(), touch.m_consumed);
 					}
 				}
@@ -1347,6 +1434,10 @@ bool TabletKeyboard::updateBackground()
 							m_nineTileSprites.reserve(size, count, m_shift_lock_key);
 							m_nineTileSprites.reserve(size, count, m_black_key);
 						}
+						else if (key == cKey_Trackball)
+						{
+							m_nineTileSprites.reserve(size, count, m_trackball);
+						}
 						else
 							m_nineTileSprites.reserve(size, count, getKeyBackground(keyCoord, key));
 					}
@@ -1363,7 +1454,7 @@ bool TabletKeyboard::updateBackground()
 					{
 						QRect r;
 						int count = m_keymap.keyboardToKeyZone(keyCoord, r);
-						if (count > 0 && key != cKey_None)
+						if (count > 0 && key != cKey_None && key != cKey_Trackball)
 							drawKeyBackground(offscreenPainter, r, keyCoord, key, false, count);
 					}
 				}
@@ -1388,6 +1479,10 @@ QPixmap & TabletKeyboard::getKeyBackground(const QPoint & keyCoord, UKey key)
 		default:
 			return m_black_key;
 		}
+	}
+	else if (key == cKey_Trackball)
+	{
+		return m_trackball;
 	}
 	else
 		return selectFromKeyType<QPixmap &>(m_keymap.map(keyCoord, TabletKeymap::eLayoutPage_plain), m_white_key, m_black_key, m_gray_key);
@@ -1483,6 +1578,7 @@ void TabletKeyboard::drawKeyCap(QPainter * painter, GlyphRenderer<GlyphSpec> & r
 		case cKey_Emoticon_Yuck:	pix = m_emoticon_yuck.height()  + 2 * cPixMargin > location.height() ? &m_emoticon_yuck_small.pixmap() : &m_emoticon_yuck.pixmap();	break;
 		case cKey_Emoticon_Gasp:	pix = m_emoticon_gasp.height()  + 2 * cPixMargin > location.height() ? &m_emoticon_gasp_small.pixmap() : &m_emoticon_gasp.pixmap();	break;
 		case cKey_Emoticon_Heart:	pix = m_emoticon_heart.height()  + 2 * cPixMargin > location.height() ? &m_emoticon_heart_small.pixmap() : &m_emoticon_heart.pixmap();	break;
+		case cKey_Trackball:		pix = m_trackball.height()  + 2 * cPixMargin > location.height() ? &m_trackball.pixmap() : &m_trackball.pixmap();	break;
 		default: /* NOP */;
 		}
 		if (pix && painter)
@@ -1504,8 +1600,69 @@ void TabletKeyboard::drawKeyCap(QPainter * painter, GlyphRenderer<GlyphSpec> & r
 				}
 			}
 			else
-				painter->drawPixmap((int) location.left() + (location.width() - pix->width()) / 2, (int) location.top() + (location.height() - pix->height()) / 2, *pix);
+			{
+				if(key != cKey_Trackball)
+					painter->drawPixmap((int) location.left() + (location.width() - pix->width()) / 2, (int) location.top() + (location.height() - pix->height()) / 2, *pix);
+				else
+				{
+					//Ball
+					painter->drawPixmap((int) location.center().x() - pix->width()/2, (int) location.center().y() - pix->height()/2, *pix);
+					
+					QTransform transform;
+					transform.translate(location.center().x(), location.center().y());
+					
+					//Arrows
+					for(int i = 0; i <=3; i++)
+					{
+						//Set opacity based off of velocity
+						switch(i) {
+							case 0:
+								if(m_trackballVelocity.y() > 0)
+									painter->setOpacity(m_trackballVelocity.y() + 0.2f);
+								else
+									painter->setOpacity(0.2f);
+									
+								painter->drawPixmap((int) location.center().x() - 1 - m_trackballArrows.width()/2, (int) location.center().y() + m_trackballArrows.height()/3, m_trackballArrows);
+								break;
+							case 1:
+								if(m_trackballVelocity.x() < 0)
+									painter->setOpacity(-m_trackballVelocity.x() + 0.2f);
+								else
+									painter->setOpacity(0.2f);
+									
+								painter->drawPixmap((int) location.center().x() - m_trackballArrows.width()/2, (int) location.center().y() + m_trackballArrows.height()/3, m_trackballArrows);
+								break;
+							case 2:
+								if(m_trackballVelocity.y() < 0)
+									painter->setOpacity(-m_trackballVelocity.y() + 0.2f);
+								else
+									painter->setOpacity(0.2f);
+									
+								painter->drawPixmap((int) location.center().x() - m_trackballArrows.width()/2, (int) location.center().y() - 1 + m_trackballArrows.height()/3, m_trackballArrows);
+								break;
+							case 3:
+								if(m_trackballVelocity.x() > 0)
+									painter->setOpacity(m_trackballVelocity.x() + 0.2f);
+								else
+									painter->setOpacity(0.2f);
+									
+								painter->drawPixmap((int) location.center().x() - 1 - m_trackballArrows.width()/2, (int) location.center().y() - 1 + m_trackballArrows.height()/3, m_trackballArrows);
+								break;
+						}
+						painter->setTransform(transform, true);
+						painter->rotate(90);
+						painter->setTransform(transform.inverted(), true);
+					}
+					
+					//Reset Opacity
+					painter->setOpacity(1.0);
+				}
+			}
 		}
+	}
+	else if (key == cKey_ToggleLanguage)
+	{
+		altText = m_keymap.autoCorrectLanguage();
 	}
 
 	if (text.size() > 0)
@@ -1571,6 +1728,21 @@ void TabletKeyboard::drawKeyCap(QPainter * painter, GlyphRenderer<GlyphSpec> & r
 				{
 					location.setWidth(location.width() * 85 / 100 + m_9tileCorner.m_trimH);
 					renderer.render(location, GlyphSpec(text, qMin<int>(height, fontSize - 2), sFont.bold(), cFunctionColor, cFunctionColor_back), sFont, Qt::AlignBottom | Qt::AlignRight);
+				}
+			}
+			else if (key == cKey_ToggleLanguage)
+			{
+				if (altText.isEmpty())
+				{
+					renderer.render(location, GlyphSpec(text, qMin<int>(height, fontSize - 2), sFont.bold(), cFunctionColor, cFunctionColor_back), sFont, Qt::AlignVCenter | Qt::AlignHCenter);
+				}
+				else
+				{
+					int boxheight = location.height() / 3;
+					QRect	rect(location.left(), location.bottom() - boxheight - 10 + (boostSize(text) ? -2 : 0), location.width(), boxheight);
+					renderer.render(rect, GlyphSpec(text, font_size(text, mainCharColor, fontSize, 75), sFont.bold(), cFunctionColor, cFunctionColor_back), sFont);
+					rect.moveTop(location.top() + 10);
+					renderer.render(rect, GlyphSpec(altText, font_size(altText, mainCharColor, fontSize, 75), sFont.bold(), cFunctionColor, cFunctionColor_back), sFont);
 				}
 			}
 			else
@@ -1728,7 +1900,7 @@ bool TabletKeyboard::idle()
 		}
 		uint64_t timeLimit = CURRENT_TIME + 10;	// process 10ms max
 		do {
-			if (extendedChars)
+			if (extendedChars && extendedChars[0] != cKey_None)
 			{
 				UKey key = extendedChars[extendedIndex];
 				if (UKeyIsUnicodeQtKey(key))
