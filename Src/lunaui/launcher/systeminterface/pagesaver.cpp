@@ -24,6 +24,7 @@
 #include "quicklaunchbar.h"
 #include "page.h"
 #include "iconlayout.h"
+#include "groupicon.h"
 #include "reorderablepage.h"
 #include "stringtranslator.h"
 #include "appmonitor.h"
@@ -53,6 +54,7 @@ namespace DimensionsSystemInterface
 
 QString PageSaver::SaveTagKey_PageType = QString("pagetype");
 QString PageSaver::SaveTagKey_PageName = QString("pagename");
+QString PageSaver::SaveTagKey_PageNameUserSet = QString("pagenameuserset");
 QString PageSaver::SaveTagKey_PageDesignator = QString("pagedesignator");
 QString PageSaver::SaveTagKey_PageUid = QString("pageuid");
 QString PageSaver::SaveTagKey_PageFile = QString("filepath");
@@ -342,11 +344,24 @@ QVariantMap PageSaver::saveReorderablePage(ReorderablePage * p_reorderPage,Launc
 
 
 	//create a filename to use
+	// (the page uid alone identifies the page; the user-visible page name must stay out of
+	//  the filename so that renaming a page doesn't strand its save file)
 	QString filepath = OperationalSettings::settings()->savedPagesDirectory + QString("/")
 			+ QString("page_")
 			+ QString(p_reorderPage->metaObject()->className())
-			+ QString("_")+p_reorderPage->property(Page::PageNamePropertyName).toString()
 			+ QString("_")+p_reorderPage->uid().toString();
+
+	//clean up any stale save files for this same page uid under an old-style (name-embedded) filename
+	QDir saveDir(OperationalSettings::settings()->savedPagesDirectory);
+	QStringList staleFilters(QString("page_*")+p_reorderPage->uid().toString());
+	QStringList staleFiles = saveDir.entryList(staleFilters,QDir::Files);
+	for (QStringList::const_iterator it = staleFiles.constBegin();it != staleFiles.constEnd();++it)
+	{
+		if (saveDir.absoluteFilePath(*it) != filepath)
+		{
+			saveDir.remove(*it);
+		}
+	}
 
 	SafeFileOperator safesave(SafeFileOperator::Write,filepath,QSettings::IniFormat);
 	QSettings& settings = safesave.safeSettings();
@@ -365,6 +380,7 @@ QVariantMap PageSaver::saveReorderablePage(ReorderablePage * p_reorderPage,Launc
 
 	settings.beginGroup("header");
 	settings.setValue(PageSaver::SaveTagKey_PageName,p_reorderPage->property(Page::PageNamePropertyName).toString());
+	settings.setValue(PageSaver::SaveTagKey_PageNameUserSet,p_reorderPage->property(Page::PageNameUserSetPropertyName).toBool());
 	settings.setValue(PageSaver::SaveTagKey_PageDesignator,p_reorderPage->property(Page::PageDesignatorPropertyName).toString());
 	settings.setValue(PageSaver::SaveTagKey_PageType,QString(p_reorderPage->metaObject()->className()));
 	settings.setValue(PageSaver::SaveTagKey_PageUid,p_reorderPage->uid().toString());
@@ -400,6 +416,42 @@ QVariantMap PageSaver::saveReorderablePage(ReorderablePage * p_reorderPage,Launc
 			qDebug() << __FUNCTION__ << ": error (iti = " << iti << "): no icon at this cell";
 			continue;
 		}
+		//an app group in this slot? it gets its own record type. Old builds reading this
+		// file see an unknown app id and silently skip the slot (see restoreReorderablePage)
+		GroupIcon * pGroupIcon = qobject_cast<GroupIcon *>(pIcon->master());
+		if (pGroupIcon)
+		{
+			QStringList memberAppIds;
+			QStringList memberLaunchPtIds;
+			QList<IconBase *> memberList = pGroupIcon->members();
+			for (QList<IconBase *>::const_iterator m_it = memberList.constBegin();
+					m_it != memberList.constEnd();++m_it)
+			{
+				IconBase * pMemberMaster = (*m_it)->master();
+				QUuid memberAppUid = p_uiContext->appUidFromIconUid(pMemberMaster->uid());
+				WebOSApp * pMemberApp = qobject_cast<WebOSApp *>(AppMonitor::appMonitor()->appByUid(memberAppUid));
+				if (!pMemberApp)
+				{
+					continue;
+				}
+				WOAppIconType::Enum mt;
+				QString memberLaunchPtId = pMemberApp->launchpointIdOfIcon(pMemberMaster->uid(),&mt);
+				memberAppIds << pMemberApp->appId();
+				memberLaunchPtIds << ((mt != WOAppIconType::INVALID) ? memberLaunchPtId : pMemberApp->appId());
+			}
+			if (memberAppIds.isEmpty())
+			{
+				continue;
+			}
+			settings.setArrayIndex(idx++);
+			settings.setValue("type",QString("Group"));
+			settings.setValue("id",QString("group:")+pGroupIcon->uid().toString());
+			settings.setValue("groupname",pGroupIcon->groupName());
+			settings.setValue("groupmembers",memberAppIds);
+			settings.setValue("groupmemberlaunchids",memberLaunchPtIds);
+			continue;
+		}
+
 		//TODO: there are a few ways to assure icon clones map to the right app. This is one of them, not necessarily the best way.
 		//	Other places in the system (see LauncherObject::addRestoredPages()) actually add the clones to the map that
 		// appUidFromIconUid consults.

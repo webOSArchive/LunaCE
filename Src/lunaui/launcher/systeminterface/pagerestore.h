@@ -30,6 +30,7 @@
 #include <QVariantMap>
 #include <QMap>
 #include <QString>
+#include <QStringList>
 #include <QPair>
 
 #include "safefileops.h"
@@ -66,15 +67,23 @@ namespace QuickLaunchRestoreSaveFileSelector
 class WebOSAppRestoreObject
 {
 public:
-	WebOSAppRestoreObject() : m_valid(false) {}
+	WebOSAppRestoreObject() : m_valid(false) , positionInSaveFile(0) , isGroup(false) {}
 	WebOSAppRestoreObject(const QUuid& appuid,const QString& appid,const QString& launchpointid,quint32 pos)
-	: m_valid(true) , appUid(appuid) , appId(appid) , launchpointId(launchpointid) , positionInSaveFile(pos) {}
+	: m_valid(true) , appUid(appuid) , appId(appid) , launchpointId(launchpointid) , positionInSaveFile(pos) , isGroup(false) {}
+	//an app group entry (type=Group in the save file); resolved into a GroupIcon at page-add time
+	WebOSAppRestoreObject(const QString& groupname,const QStringList& memberAppIds,const QStringList& memberLaunchPtIds,quint32 pos)
+	: m_valid(true) , positionInSaveFile(pos) , isGroup(true) , groupName(groupname)
+	, groupMemberAppIds(memberAppIds) , groupMemberLaunchPtIds(memberLaunchPtIds) {}
 
 	bool m_valid;
 	QUuid appUid;
 	QString appId;
 	QString launchpointId;
 	quint32 positionInSaveFile;
+	bool isGroup;
+	QString groupName;
+	QStringList groupMemberAppIds;
+	QStringList groupMemberLaunchPtIds;
 };
 
 static QMap<QString,QPair<QString,quint32> > s_positionsAsStoredOnDiskMap;

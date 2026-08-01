@@ -29,6 +29,7 @@
 #include "gfxsettings.h"
 #include "layoutsettings.h"
 #include "pagetab.h"
+#include "page.h"
 
 #include <QGraphicsSceneMouseEvent>
 #include <QPainter>
@@ -164,6 +165,12 @@ void PageTabBar::slotAddTab(const QString& labelString,Page * p_refersToPage)
 	//TODO: DETERMINE THE SIZE OF THE STRING NAME, and use that as tab size, and not just Max size
 	PageTab * pPageTab = new PageTab(DimensionsGlobal::realRectAroundRealPoint(QSizeF(newTabMaxSize())),
 									labelString,this,p_refersToPage);
+
+	if (p_refersToPage)
+	{
+		connect(p_refersToPage,SIGNAL(signalPageNameChanged(const QString&,const QString&)),
+				this,SLOT(slotPageNameChanged(const QString&,const QString&)));
+	}
 
 /*
  * #define TAB_NORMAL_BACKGROUND_FILEPATH 	QString("tab-bg.png")
@@ -446,6 +453,23 @@ void PageTabBar::slotTabActivatedTap()
 		return;
 	}
 	Q_EMIT signalTabForPageActivatedTap(pTab->relatedPage());
+}
+
+//virtual
+void PageTabBar::slotPageNameChanged(const QString& oldName,const QString& newName)
+{
+	Q_UNUSED(oldName);
+	Page * pPage = qobject_cast<Page *>(sender());
+	if (pPage == NULL)
+	{
+		return;
+	}
+	PageTab * pTab = tabByPage(pPage);
+	if (pTab == NULL)
+	{
+		return;
+	}
+	pTab->slotSetLabel(newName.toUpper());
 }
 
 //virtual

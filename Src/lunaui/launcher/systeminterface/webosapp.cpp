@@ -162,6 +162,12 @@ QString WebOSApp::category() const
 }
 
 //virtual
+QString WebOSApp::mainIconFilePath() const
+{
+	return m_mainIconFilePath;
+}
+
+//virtual
 bool WebOSApp::nonRemovableSystemApp() const
 {
 	return AppMonitor::webosAppNonRemovableSystemApp(m_appId);

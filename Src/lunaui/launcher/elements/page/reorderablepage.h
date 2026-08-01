@@ -31,6 +31,7 @@ class ReorderableIconLayout;
 class PixmapObject;
 class TextBox;
 class PictureBox;
+class IconCell;
 
 class ReorderablePage : public Page
 {
@@ -69,6 +70,9 @@ public:
 	//TODO: possibly a common base class under Page that encompasses Pages that have layouts with "grids"
 	//		or at least icon coordinates that can be expressed as <int,int> (i.e. a QPoint)
 	virtual IconBase * iconAtLayoutCoordinate(const QPointF& layoutCoord,QPoint& r_gridCoordinate,QPointF * r_p_intraIconCoord = 0);
+
+	//looks the icon up in this page's layout (committed icons only)
+	virtual IconCell * iconCellWithIconUid(const QUuid& iconUid);
 
 	virtual qint32 rowAtPageCoordinate(const QPointF& pageCoord);
 
@@ -130,6 +134,23 @@ protected:
 
 protected:
 
+	///////////// --- app group (folder) drop support ----------- //////////////
+	//while an icon is being dragged, hovering it over the central "core" zone of another
+	// icon designates that icon as a group-drop candidate (drop = create a group / add to
+	// the group) rather than generating a reorder ripple.
+	// returns true if the move is being treated as a group-drop hover, in which case the
+	// caller must NOT generate reorder moves for this sample
+	virtual bool updateGroupDropCandidate(IconBase * p_hitIcon,const QPoint& gridCoord,const QPointF& intraIconCoord);
+	virtual void clearGroupDropCandidate();
+	//called on release; returns true if the release was consumed as a group drop
+	virtual bool commitGroupDrop();
+
+protected Q_SLOTS:
+
+	virtual void slotGroupDropDwellTimeout();
+
+protected:
+
 	QPointer<TextBox> m_qp_emptyPageText;
 	QPointer<PictureBox> m_qp_emptyPageIcon;
 
@@ -140,6 +161,10 @@ protected:
 	// in particular, I'd like multi-touch support.
 	QPointer<IconBase> m_qp_iconInMotion;
 	QPoint m_iconInMotionCurrentGridPosition;
+
+	QPointer<IconBase> m_qp_groupDropCandidateIcon;
+	bool m_groupDropCandidateArmed;
+	QTimer m_groupDropDwellTimer;
 
 };
 

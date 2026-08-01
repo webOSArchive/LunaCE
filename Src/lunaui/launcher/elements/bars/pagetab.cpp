@@ -76,6 +76,7 @@ PageTab::PageTab(const QRectF& pageTabGeometry,const QString& label,
 		this->setParentItem(m_qp_currentTabBarOwner);
 
 	grabGesture(Qt::TapGesture);
+	grabGesture(Qt::TapAndHoldGesture);
 	initSignalSlotConnections();
 
 	m_backgroundGeom = m_geom;
@@ -104,6 +105,20 @@ quint32 PageTab::tabIndex() const
 void PageTab::setTabIndex(quint32 i)
 {
 	setProperty(PageTab::PropertyNameIndex,i);
+}
+
+//virtual
+void PageTab::slotSetLabel(const QString& newLabel)
+{
+	if (newLabel == m_tabLabel)
+	{
+		return;
+	}
+	m_tabLabel = newLabel;
+	recalculateLabelBoundsForCurrentGeom();
+	redoLabelTextLayout();
+	recalculateLabelPosition();
+	update();
 }
 
 //virtual

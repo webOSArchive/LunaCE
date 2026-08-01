@@ -102,6 +102,8 @@ protected Q_SLOTS:
 
 	virtual void slotAnimationFinished() {}
 
+	virtual void slotPageNameChanged(const QString& oldName,const QString& newName);
+
 	virtual void slotTabActivatedTap();
 	virtual void slotTabActivatedTapAndHold();
 

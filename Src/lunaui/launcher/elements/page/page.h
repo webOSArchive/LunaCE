@@ -124,6 +124,7 @@ public:
 
 	friend class PageRestore;
 	static const char * PageNamePropertyName;
+	static const char * PageNameUserSetPropertyName;
 	static const char * PageIndexPropertyName;
 	static const char * PageDesignatorPropertyName;
 	static QString PageDesignator_AllAlphabetic;

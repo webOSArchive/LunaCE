@@ -54,6 +54,8 @@ LOCALIZED("APPS");
 LOCALIZED("DOWNLOADS");
 LOCALIZED("FAVORITES");
 LOCALIZED("SETTINGS");
+LOCALIZED("Group");
+LOCALIZED("Rename Tab");
 LOCALIZED("OWWW! That hurts!");
 LOCALIZED("Next time, please unmount the drive from the desktop.");
 

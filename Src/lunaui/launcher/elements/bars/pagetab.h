@@ -89,6 +89,7 @@ public Q_SLOTS:
 
 	virtual void slotHighlight();
 	virtual void slotUnHighlight();
+	virtual void slotSetLabel(const QString& newLabel);
 
 Q_SIGNALS:
 

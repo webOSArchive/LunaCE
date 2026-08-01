@@ -151,6 +151,8 @@ public:
 	virtual LauncherObject * owningLauncher() const;		//this is only valid if the icon is in the launcher's Limbo
 
 	QString iconLabel() const;
+	//the current main icon art (may be null); needed e.g. to composite group icon thumbnails
+	PixmapObject * mainPixmap() const { return m_qp_iconPixmap; }
 	void setIconLabel(const QString& v);
 	void resetIconLabel();
 	void setIconLabelVisibility(bool visible);

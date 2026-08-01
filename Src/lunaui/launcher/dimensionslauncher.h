@@ -43,6 +43,9 @@ class PageTabBar;
 class AlphabetPage;
 class ReorderablePage;
 class PageMovementControl;
+class GroupIcon;
+class GroupOverlay;
+class RenameDialog;
 
 class QGraphicsSceneMouseEvent;
 class QGesture;
@@ -224,6 +227,27 @@ public:
 public Q_SLOTS:
 
 	void slotAppScanCompleted(bool initialScan=false);
+
+	//rename a launcher tab/page from the outside world (systemservice "launchertitlechange").
+	// tabIndex is the 0-based, left-to-right ui index of the page
+	void slotSystemApiChangeTabTitle(int tabIndex,QString newLabel);
+
+	//////// app group (folder) support ////////
+	//true while the group overlay panel is up
+	bool groupOverlayShowing() const;
+	//true while any of the launcher's modal panels (group overlay, rename dialog)
+	// are up - used to suppress type-to-search and the ime-driven launcher resize
+	bool modalUiShowing() const;
+	void openGroupOverlay(GroupIcon * p_groupIcon);
+	//find the reorderable page whose layout currently holds this icon
+	ReorderablePage * pageContainingIconUid(const QUuid& iconUid);
+	void slotGroupOverlayMemberTapped(IconBase * p_icon);
+	void slotGroupOverlayMemberPoppedOut(IconBase * p_icon);
+	void slotGroupOverlayDismissed();
+
+	//////// tab rename dialog ////////
+	void slotRenameDialogCommitted(const QString& newText);
+	void slotRenameDialogDismissed();
 
 	//prior to the appmonitor deleting all the app structures
 	void slotAppPreRemove(const DimensionsSystemInterface::ExternalApp& eapp,DimensionsSystemInterface::AppMonitorSignalType::Enum origin = DimensionsSystemInterface::AppMonitorSignalType::INVALID);
@@ -584,6 +608,11 @@ protected:
 	QPointer<ColorRoundRectButton> m_qp_testButton;
 
 	QPointer<OverlayLayer> m_qp_overlay;
+
+	QPointer<GroupOverlay> m_qp_groupOverlay;
+
+	QPointer<RenameDialog> m_qp_renameDialog;
+	QPointer<Page> m_qp_renameDialogTargetPage;
 
 	QDeclarativeComponent* m_qmlAppInfoDialog;
 	QGraphicsObject* m_appInfoDialog;

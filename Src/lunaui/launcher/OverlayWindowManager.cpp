@@ -25,6 +25,7 @@
 #include "OverlayWindowManager_p.h"
 
 #include "CardWindowManager.h"
+#include "dimensionslauncher.h"
 
 #include <string>
 #include <algorithm>
@@ -856,8 +857,15 @@ void OverlayWindowManager::keyPressEvent(QKeyEvent* event)
 		}
 	}
 	else if (!SystemUiController::instance()->isCardWindowMaximized()) {
+		//keys belong to the launcher's modal ui while it is up (group overlay,
+		// rename dialog); don't let them trigger universal search
+		LauncherObject * pLauncher = LauncherObject::primaryInstance();
+		if (pLauncher && pLauncher->modalUiShowing())
+		{
+			return;
+		}
 		// Launch global search -- forward the text to the Universal Search app
-		if (event->key() == Qt::Key_Shift || 
+		if (event->key() == Qt::Key_Shift ||
 			event->key() == Qt::Key_Alt ||
 			((event->key() >= Qt::Key_Space && event->key() <= Qt::Key_ydiaeresis)))
 		{
@@ -1236,8 +1244,16 @@ void OverlayWindowManager::slotPositiveSpaceChangeFinished(const QRect& r)
 {
 }
 
-void OverlayWindowManager::slotPositiveSpaceChanged(const QRect& r) 
+void OverlayWindowManager::slotPositiveSpaceChanged(const QRect& r)
 {
+	//while the launcher's modal ui is up with the keyboard raised (group rename,
+	// tab rename) keep the launcher at full size; those panels position themselves
+	// clear of the keyboard instead
+	LauncherObject * pLauncher = LauncherObject::primaryInstance();
+	if (pLauncher && pLauncher->modalUiShowing())
+	{
+		return;
+	}
 	if (DimensionsUI::primaryInstance())
 	{
 		DimensionsUI::primaryInstance()->resize(r.width(),r.height());

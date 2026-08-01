@@ -572,6 +572,7 @@ SOURCES += dimensionsmain.cpp \
 			webosapp.cpp \
 			appmonitor.cpp \
 			iconheap.cpp \
+			groupicon.cpp \
 			stringtranslator.cpp \
 			appeffector.cpp \
 			pagesaver.cpp \
@@ -587,6 +588,8 @@ SOURCES += dimensionsmain.cpp \
 			vcamera.cpp \
 			expblur.cpp \
 			overlaylayer.cpp \
+			groupoverlay.cpp \
+			renamedialog.cpp \
 			safefileops.cpp
 			
 HEADERS += dimensionsmain.h \
@@ -655,6 +658,7 @@ HEADERS += dimensionsmain.h \
 			webosapp.h \
 			appmonitor.h \
 			iconheap.h \
+			groupicon.h \
 			stringtranslator.h \
 			appeffector.h \
 			pagesaver.h \
@@ -671,6 +675,8 @@ HEADERS += dimensionsmain.h \
 			vcamera.h \
 			expblur.h \
 			overlaylayer.h \
+			groupoverlay.h \
+			renamedialog.h \
 			safefileops.h
 			
 ####### LAUNCHER ADDITIONS ########
