@@ -410,6 +410,12 @@ static void resetEventCounters()
 //virtual
 bool ReorderablePage::tapGesture(QTapGesture *tapEvent,QGestureEvent * baseGestureEvent)
 {
+	//a tap on the page counts as "somewhere else" for the tab bar's "+" affordance
+	if (LauncherObject::primaryInstance())
+	{
+		LauncherObject::primaryInstance()->hideAddTabAffordance();
+	}
+
 	//ignore if an icon is currently moving (tracking)
 	//TODO: MULTI-TOUCH: (obvious)
 	if (m_qp_iconInMotion)

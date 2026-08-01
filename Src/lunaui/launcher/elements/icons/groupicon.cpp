@@ -250,9 +250,9 @@ PixmapObject * GroupIcon::renderCompositePmo(const QList<IconBase *>& memberIcon
 	painter.setBrush(QColor(0,0,0,120));
 	painter.drawRoundedRect(plateRect.translated(0.0,1.5),8.0,8.0);
 	QLinearGradient plateGradient(plateRect.topLeft(),plateRect.bottomLeft());
-	plateGradient.setColorAt(0.0,QColor(85,85,90,160));
-	plateGradient.setColorAt(0.35,QColor(35,35,40,150));
-	plateGradient.setColorAt(1.0,QColor(10,10,12,170));
+	plateGradient.setColorAt(0.0,QColor(111,111,116,160));
+	plateGradient.setColorAt(0.35,QColor(61,61,66,150));
+	plateGradient.setColorAt(1.0,QColor(36,36,38,170));
 	painter.setPen(QPen(QColor(255,255,255,95),2.0));
 	painter.setBrush(plateGradient);
 	painter.drawRoundedRect(plateRect,8.0,8.0);

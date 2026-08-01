@@ -216,6 +216,25 @@ void GroupOverlay::relayoutMembers()
 	update();
 }
 
+//virtual
+bool GroupOverlay::resize(quint32 newWidth,quint32 newHeight)
+{
+	ThingPaintable::resize(newWidth,newHeight);
+	if (m_showing)
+	{
+		//re-center the panel (and re-place the member icons) in the new geometry
+		bool wasEditing = m_editingName;
+		QString savedBuffer = m_editBuffer;
+		relayoutMembers();
+		if (wasEditing)
+		{
+			m_editBuffer = savedBuffer;
+		}
+	}
+	update();
+	return true;
+}
+
 void GroupOverlay::forgetIcon(IconBase * p_icon)
 {
 	if (!p_icon)

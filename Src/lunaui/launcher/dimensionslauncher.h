@@ -245,9 +245,19 @@ public Q_SLOTS:
 	void slotGroupOverlayMemberPoppedOut(IconBase * p_icon);
 	void slotGroupOverlayDismissed();
 
-	//////// tab rename dialog ////////
+	//////// tab rename / add / remove ////////
 	void slotRenameDialogCommitted(const QString& newText);
+	void slotRenameDialogDeleteRequested();
 	void slotRenameDialogDismissed();
+	//the "+" in the empty part of the tab bar was tapped
+	void slotAddTabRequested();
+
+	//dismisses the "+" (add tab) affordance; called from anywhere in the launcher
+	// that counts as "the user tapped somewhere else".
+	//WARNING: do NOT introduce an access specifier (public:/protected:) inside this
+	// Q_SLOTS block - it ends the block, and every slot declared below it silently
+	// stops being a slot, so its connect()s fail at runtime
+	void hideAddTabAffordance();
 
 	//prior to the appmonitor deleting all the app structures
 	void slotAppPreRemove(const DimensionsSystemInterface::ExternalApp& eapp,DimensionsSystemInterface::AppMonitorSignalType::Enum origin = DimensionsSystemInterface::AppMonitorSignalType::INVALID);
@@ -533,6 +543,14 @@ protected:
 	void _pageFinishedAddAnim(Page * p_page);
 	void _pageFinishedHPanAnim();
 	void _pageAddDirect(Page * p_page,quint32 idx);
+	//takes the page out of the launcher (list, pan anchor, scene) and destroys it.
+	// the caller is responsible for anything that was living ON the page
+	void _pageRemoveDirect(Page * p_page);
+
+	//creates an empty user tab/page at the end and gives it a tab
+	void createUserTab(const QString& tabName);
+	//removes a user-created tab/page, moving anything on it to the first page
+	void deleteUserTab(Page * p_page);
 
 
 	//work in conjunction with take/taken system to temporarily own and manage icons during reorders and other transitions that have the icon
@@ -612,7 +630,9 @@ protected:
 	QPointer<GroupOverlay> m_qp_groupOverlay;
 
 	QPointer<RenameDialog> m_qp_renameDialog;
+	//the page the rename dialog is acting on; null means the dialog is creating a new one
 	QPointer<Page> m_qp_renameDialogTargetPage;
+	bool m_renameDialogCreatingNewPage;
 
 	QDeclarativeComponent* m_qmlAppInfoDialog;
 	QGraphicsObject* m_appInfoDialog;

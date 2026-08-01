@@ -71,6 +71,7 @@
 
 const char * Page::PageNamePropertyName = "pagename";
 const char * Page::PageNameUserSetPropertyName = "pagenameuserset";
+const char * Page::PageUserCreatedPropertyName = "pageusercreated";
 const char * Page::PageIndexPropertyName = "pageuiindex";
 const char * Page::PageDesignatorPropertyName = "pagedesignator";
 

@@ -67,6 +67,9 @@ public:
 	//re-read membership from the group and lay the panel out again
 	void relayoutMembers();
 
+	//keeps the shield covering the whole launcher when it is resized (e.g. rotation)
+	virtual bool resize(quint32 newWidth,quint32 newHeight);
+
 	//drop the icon from the overlay's shown list WITHOUT touching its visual state;
 	// must be called before handing a popped-out icon to a new owner, so later
 	// relayout/release passes don't disturb it

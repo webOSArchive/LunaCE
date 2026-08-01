@@ -44,6 +44,7 @@ public:
 	static QString SaveTagKey_PageType;
 	static QString SaveTagKey_PageName;
 	static QString SaveTagKey_PageNameUserSet;
+	static QString SaveTagKey_PageUserCreated;
 	static QString SaveTagKey_PageDesignator;		//a "category" like name to keep track of pages that serve a particular purpose
 	static QString SaveTagKey_PageUid;
 	static QString SaveTagKey_PageFile;

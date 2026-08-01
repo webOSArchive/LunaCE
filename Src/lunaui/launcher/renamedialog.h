@@ -28,6 +28,7 @@
 #include <QString>
 
 class LauncherObject;
+class PixmapObject;
 class QTapGesture;
 class QTapAndHoldGesture;
 class QGestureEvent;
@@ -52,11 +53,19 @@ public:
 	RenameDialog(const QRectF& geometry,LauncherObject * p_launcher);
 	virtual ~RenameDialog();
 
-	//promptText is the small heading (e.g. "Rename Tab"); currentText primes the field
-	void showDialog(const QString& promptText,const QString& currentText);
-	//commit=true emits signalRenameCommitted with the edited text first
-	void hideDialog(bool commit);
+	//promptText is the small heading (e.g. "Rename Tab"); currentText primes the field.
+	// commitOnTapAway: tapping outside the panel keeps the edit (rename) rather than
+	// throwing it away (create). showDeleteButton adds the trash affordance.
+	void showDialog(const QString& promptText,const QString& currentText,
+					bool commitOnTapAway = true,bool showDeleteButton = false);
+	//commit=true emits signalRenameCommitted with the edited text first.
+	// notifyOwner=false tears down silently (used when one dialog replaces another),
+	// so the owner's idea of what the dialog is acting on isn't cleared underneath it
+	void hideDialog(bool commit,bool notifyOwner = true);
 	bool isShowing() const;
+
+	//keeps the panel centered when the launcher is resized (e.g. rotation)
+	virtual bool resize(quint32 newWidth,quint32 newHeight);
 
 	// InputClient - virtual keyboard hookup
 	virtual void commitText(const std::string& text);
@@ -65,6 +74,7 @@ public:
 Q_SIGNALS:
 
 	void signalRenameCommitted(const QString& newText);
+	void signalDeleteRequested();
 	void signalDismissed();
 
 protected:
@@ -78,15 +88,25 @@ protected:
 
 private:
 
+	//(re)computes m_panelRect/m_promptRect/m_editRect/m_deleteRect for the current geom
+	void recalculateLayout();
+
 	QPointer<LauncherObject> m_qp_launcher;
 	bool m_showing;
+	bool m_commitOnTapAway;
+	bool m_showDeleteButton;
+	//set when the trash was tapped; the delete is signalled during teardown, before
+	// signalDismissed, so the owner still knows which page the dialog was acting on
+	bool m_deleteRequested;
 	QString m_promptText;
 	QString m_editBuffer;
 	QRectF m_panelRect;		//ICS
 	QRectF m_promptRect;	//ICS
 	QRectF m_editRect;		//ICS
+	QRectF m_deleteRect;	//ICS
 	QFont m_promptFont;
 	QFont m_editFont;
+	QPointer<PixmapObject> m_qp_deleteIconPmo;
 	QPointer<QGraphicsObject> m_qp_prevFocusItem;
 };
 

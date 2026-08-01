@@ -70,6 +70,13 @@ public:
 	//TODO: temporary; remove when a better system (like styles) goes in place
 	static QFont staticLabelFontForTabs();
 
+	//ceiling on the number of tabs; beyond this the tabs get too narrow to read
+	// (the bar divides its width among them, see newTabMaxSize)
+	static const quint32 MaxTabs = 6;
+	//the stock webOS tab set is a floor other parts of the system expect to exist:
+	// only tabs beyond these can be removed
+	static const quint32 MinPermanentTabs = 4;
+
 	//used by the launcher; specifically by the redirectTouch movement handler, while an icon is being moved.
 	// it will test the coordinate given (it's in Scene CS) against the space being occupied by the tabs and return the Page ptr
 	// of the page whos tab is "hit".
@@ -84,6 +91,9 @@ Q_SIGNALS:
 	void signalTabForPageActivatedTap(Page *);
 	void signalTabForPageActivatedTapAndHold(Page *);
 
+	//the "+" affordance in the empty part of the bar was tapped
+	void signalAddTabRequested();
+
 	void signalAllTabHighlightsOff();			//Tab bar -> Tabs
 
 	void signalInteractionsBlocked();
@@ -92,6 +102,9 @@ Q_SIGNALS:
 public Q_SLOTS:
 
 	void slotAddTab(const QString& labelString,Page * p_refersToPage=0);  //outside -> Tab bar
+	void slotRemoveTab(Page * p_refersToPage);
+	//hides the "+" (add tab) affordance, if it is showing
+	void slotHideAddTabButton();
 	void slotUnHighlightAll();   //outside -> Tab bar
 
 protected Q_SLOTS:
@@ -106,6 +119,9 @@ protected Q_SLOTS:
 
 	virtual void slotTabActivatedTap();
 	virtual void slotTabActivatedTapAndHold();
+
+	//the empty-space press has been held long enough: reveal the "+"
+	void slotAddTabLongPressTimeout();
 
 	virtual void slotHighlighted();
 
@@ -151,6 +167,23 @@ private:
 
 	QSize	newTabMaxSize();
 
+	//re-fits every tab to the bar for the current tab count, and re-flows them.
+	// must run whenever a tab is added or removed: the bar divides its width among
+	// the tabs, so the existing ones have to shrink/grow too
+	void	resizeAllTabs();
+
+	//geometry of the "+" affordance inside the unused tab space (ICS)
+	QRectF	addTabButtonRect() const;
+
+	bool	m_showAddTabButton;
+	//the long-press in the bar's empty space is detected from mouse events + a timer;
+	// grabbing Tap/TapAndHold gestures here would disrupt tap delivery launcher-wide
+	QTimer	m_addTabLongPressTimer;
+	QPointF	m_addTabPressPos;
+	//set while the release that ends the revealing long-press is still pending, so
+	// that release doesn't immediately dismiss what it just revealed
+	bool	m_addTabRevealedByThisPress;
+	QPointer<PixmapObject> m_qp_addTabIconPmo;
 	QRectF  m_unusedTabSpace;
 	QRectF	m_usedTabSpace;
 	quint32 m_maxTabWidth;

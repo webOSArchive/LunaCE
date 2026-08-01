@@ -120,6 +120,7 @@ QVariantMap PageRestore::restorePage(const QString& pageSaveFilepath)
 	QString pageType = settings.value(PageSaver::SaveTagKey_PageType,QString("")).toString();
 	QString pageName = settings.value(PageSaver::SaveTagKey_PageName,QString("")).toString();
 	bool pageNameUserSet = settings.value(PageSaver::SaveTagKey_PageNameUserSet,false).toBool();
+	bool pageUserCreated = settings.value(PageSaver::SaveTagKey_PageUserCreated,false).toBool();
 	QString pageDesignator = settings.value(PageSaver::SaveTagKey_PageDesignator,QString("")).toString();
 	QString pageUid = settings.value(PageSaver::SaveTagKey_PageUid,QString("")).toString();
 	settings.endGroup();
@@ -137,6 +138,7 @@ QVariantMap PageRestore::restorePage(const QString& pageSaveFilepath)
 		rmap[PageSaver::SaveTagKey_PageName] = pageName;
 	}
 	rmap[PageSaver::SaveTagKey_PageNameUserSet] = pageNameUserSet;
+	rmap[PageSaver::SaveTagKey_PageUserCreated] = pageUserCreated;
 	if (!pageDesignator.isEmpty())
 	{
 		rmap[PageSaver::SaveTagKey_PageDesignator] = pageDesignator;

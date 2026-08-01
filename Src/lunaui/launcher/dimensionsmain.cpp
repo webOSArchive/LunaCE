@@ -98,6 +98,14 @@ void DimensionsUI::resize(int w, int h)
 		return;
 	}
 
+	if (s_qp_primaryLauncher && (m_lastResize == QSize(w,h)))
+	{
+		//nothing actually changed: skip the full relayout, which is visible as a
+		// bounce/settle of the whole launcher. (The ime hiding after a rename dialog
+		// closes reports a positive-space change back to the size we already had.)
+		return;
+	}
+
 	m_lastResize = QSize(w,h);
 	if (!s_qp_primaryLauncher)
 	{

@@ -125,6 +125,9 @@ public:
 	friend class PageRestore;
 	static const char * PageNamePropertyName;
 	static const char * PageNameUserSetPropertyName;
+	//true for pages the user created themselves; those are the only removable ones
+	// (the stock set of pages is a floor other parts of webOS may rely on)
+	static const char * PageUserCreatedPropertyName;
 	static const char * PageIndexPropertyName;
 	static const char * PageDesignatorPropertyName;
 	static QString PageDesignator_AllAlphabetic;

@@ -19,6 +19,9 @@
 #include "renamedialog.h"
 #include "dimensionslauncher.h"
 #include "IMEController.h"
+#include "pixmapobject.h"
+#include "pixmaploader.h"
+#include "gfxsettings.h"
 
 #include <QPainter>
 #include <QPen>
@@ -38,11 +41,19 @@
 //the panel sits above screen center so the virtual keyboard can't cover it
 #define RENAME_DIALOG_SHIFT_UP_PX		140
 #define RENAME_DIALOG_MAX_TEXT_LEN		24
+#define RENAME_DIALOG_DELETE_EDGE_PX	40
+//the trash can glyph harvested from the Mojo framework (as used by the stock apps);
+// it is a 2-state sprite, normal state on top
+#define RENAME_DIALOG_DELETE_ICON_FILEPATH	QString("tab-delete-icon.png")
 
 RenameDialog::RenameDialog(const QRectF& geometry,LauncherObject * p_launcher)
 : ThingPaintable(geometry)
 , m_qp_launcher(p_launcher)
 , m_showing(false)
+, m_commitOnTapAway(true)
+, m_showDeleteButton(false)
+, m_deleteRequested(false)
+, m_qp_deleteIconPmo(0)
 {
 	m_promptFont = QFont(QString("Prelude"));
 	m_promptFont.setPixelSize(18);
@@ -50,17 +61,11 @@ RenameDialog::RenameDialog(const QRectF& geometry,LauncherObject * p_launcher)
 	m_editFont.setPixelSize(24);
 	m_editFont.setBold(true);
 
-	m_panelRect = QRectF(-RENAME_DIALOG_PANEL_WIDTH_PX/2.0,
-						-RENAME_DIALOG_PANEL_HEIGHT_PX/2.0 - RENAME_DIALOG_SHIFT_UP_PX,
-						RENAME_DIALOG_PANEL_WIDTH_PX,RENAME_DIALOG_PANEL_HEIGHT_PX);
-	m_promptRect = QRectF(m_panelRect.left() + RENAME_DIALOG_PADDING_PX,
-						m_panelRect.top() + RENAME_DIALOG_PADDING_PX/2,
-						m_panelRect.width() - 2*RENAME_DIALOG_PADDING_PX,
-						RENAME_DIALOG_PROMPT_HEIGHT_PX);
-	m_editRect = QRectF(m_panelRect.left() + RENAME_DIALOG_PADDING_PX,
-						m_promptRect.bottom(),
-						m_panelRect.width() - 2*RENAME_DIALOG_PADDING_PX,
-						m_panelRect.bottom() - m_promptRect.bottom() - RENAME_DIALOG_PADDING_PX);
+	m_qp_deleteIconPmo = PixmapObjectLoader::instance()->quickLoad(
+			QString(GraphicsSettings::DiUiGraphicsSettings()->graphicsAssetBaseDirectory
+					+ RENAME_DIALOG_DELETE_ICON_FILEPATH));
+
+	recalculateLayout();
 
 	setAcceptTouchEvents(true);
 	grabGesture(Qt::TapGesture);
@@ -84,16 +89,56 @@ bool RenameDialog::isShowing() const
 	return m_showing;
 }
 
-void RenameDialog::showDialog(const QString& promptText,const QString& currentText)
+void RenameDialog::recalculateLayout()
+{
+	m_panelRect = QRectF(-RENAME_DIALOG_PANEL_WIDTH_PX/2.0,
+						-RENAME_DIALOG_PANEL_HEIGHT_PX/2.0 - RENAME_DIALOG_SHIFT_UP_PX,
+						RENAME_DIALOG_PANEL_WIDTH_PX,RENAME_DIALOG_PANEL_HEIGHT_PX);
+	m_promptRect = QRectF(m_panelRect.left() + RENAME_DIALOG_PADDING_PX,
+						m_panelRect.top() + RENAME_DIALOG_PADDING_PX/2,
+						m_panelRect.width() - 2*RENAME_DIALOG_PADDING_PX,
+						RENAME_DIALOG_PROMPT_HEIGHT_PX);
+
+	qreal editRight = m_panelRect.right() - RENAME_DIALOG_PADDING_PX;
+	m_deleteRect = QRectF(editRight - RENAME_DIALOG_DELETE_EDGE_PX,
+						m_promptRect.bottom() + 4.0,
+						RENAME_DIALOG_DELETE_EDGE_PX,RENAME_DIALOG_DELETE_EDGE_PX);
+	if (m_showDeleteButton)
+	{
+		//make room for the trash affordance to the right of the field
+		editRight = m_deleteRect.left() - 10.0;
+	}
+	m_editRect = QRectF(m_panelRect.left() + RENAME_DIALOG_PADDING_PX,
+						m_promptRect.bottom(),
+						editRight - (m_panelRect.left() + RENAME_DIALOG_PADDING_PX),
+						m_panelRect.bottom() - m_promptRect.bottom() - RENAME_DIALOG_PADDING_PX);
+}
+
+//virtual
+bool RenameDialog::resize(quint32 newWidth,quint32 newHeight)
+{
+	//the shield has to cover the whole launcher in either orientation
+	ThingPaintable::resize(newWidth,newHeight);
+	recalculateLayout();
+	update();
+	return true;
+}
+
+void RenameDialog::showDialog(const QString& promptText,const QString& currentText,
+							bool commitOnTapAway,bool showDeleteButton)
 {
 	if (m_showing)
 	{
-		hideDialog(false);
+		//silent teardown: this dialog is being re-opened for a different target
+		hideDialog(false,false);
 	}
 	m_showing = true;
+	m_commitOnTapAway = commitOnTapAway;
+	m_showDeleteButton = showDeleteButton;
 	m_promptText = promptText;
 	m_editBuffer = currentText;
 	m_editBuffer.truncate(RENAME_DIALOG_MAX_TEXT_LEN);
+	recalculateLayout();
 
 	//same input recipe as the group overlay rename (see groupoverlay.cpp)
 	PalmIME::EditorState editorState(PalmIME::FieldType_Search);
@@ -114,7 +159,7 @@ void RenameDialog::showDialog(const QString& promptText,const QString& currentTe
 	update();
 }
 
-void RenameDialog::hideDialog(bool commit)
+void RenameDialog::hideDialog(bool commit,bool notifyOwner)
 {
 	if (!m_showing)
 	{
@@ -138,9 +183,20 @@ void RenameDialog::hideDialog(bool commit)
 	m_editBuffer.clear();
 	setVisible(false);
 
+	if (!notifyOwner)
+	{
+		m_deleteRequested = false;
+		return;
+	}
 	if (commit && (!finalText.isEmpty()))
 	{
 		Q_EMIT signalRenameCommitted(finalText);
+	}
+	if (m_deleteRequested)
+	{
+		m_deleteRequested = false;
+		//before signalDismissed: the owner still knows the target page
+		Q_EMIT signalDeleteRequested();
 	}
 	Q_EMIT signalDismissed();
 }
@@ -209,10 +265,19 @@ bool RenameDialog::sceneEvent(QEvent * event)
 bool RenameDialog::tapGesture(QTapGesture * tapEvent,QGestureEvent * baseGestureEvent)
 {
 	QPointF tapICS = mapFromScene(baseGestureEvent->mapToGraphicsScene(tapEvent->hotSpot()));
+	if (m_showDeleteButton && m_deleteRect.contains(tapICS))
+	{
+		//delete is deliberately immediate (no confirmation prompt). hideDialog() fires
+		// the request during teardown - emitting it here would be too late, since
+		// signalDismissed clears the owner's record of which page this dialog is for
+		m_deleteRequested = true;
+		hideDialog(false);
+		return true;
+	}
 	if (!m_panelRect.contains(tapICS))
 	{
-		//tapping away commits, same behavior as the group rename
-		hideDialog(true);
+		//renaming keeps what was typed when tapping away; creating throws it away
+		hideDialog(m_commitOnTapAway);
 	}
 	return true;
 }
@@ -281,6 +346,30 @@ void RenameDialog::paint(QPainter * painter,const QStyleOptionGraphicsItem * opt
 	painter->setPen(QColor(255,255,255,235));
 	painter->setFont(m_editFont);
 	painter->drawText(m_editRect,Qt::AlignCenter,m_editBuffer + QChar('|'));
+
+	if (m_showDeleteButton)
+	{
+		if (m_qp_deleteIconPmo && m_qp_deleteIconPmo->data()
+			&& (!m_qp_deleteIconPmo->data()->isNull()))
+		{
+			//the asset is a 2-state sprite; take the normal (upper) half
+			QPixmap * pIconPix = m_qp_deleteIconPmo->data();
+			QRect sourceRect(0,0,pIconPix->width(),pIconPix->height()/2);
+			painter->drawPixmap(m_deleteRect.toRect(),*pIconPix,sourceRect);
+		}
+		else
+		{
+			//no asset: fall back to a plainly drawn trash can so the action stays reachable
+			QRectF body = m_deleteRect.adjusted(9.0,13.0,-9.0,-5.0);
+			painter->setPen(QPen(QColor(255,255,255,220),2.0));
+			painter->setBrush(Qt::NoBrush);
+			painter->drawRect(body);
+			painter->drawLine(QPointF(m_deleteRect.left()+5.0,body.top()),
+							QPointF(m_deleteRect.right()-5.0,body.top()));
+			painter->drawLine(QPointF(body.center().x()-4.0,body.top()-5.0),
+							QPointF(body.center().x()+4.0,body.top()-5.0));
+		}
+	}
 }
 
 //virtual

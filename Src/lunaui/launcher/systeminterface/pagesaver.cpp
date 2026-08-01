@@ -55,6 +55,7 @@ namespace DimensionsSystemInterface
 QString PageSaver::SaveTagKey_PageType = QString("pagetype");
 QString PageSaver::SaveTagKey_PageName = QString("pagename");
 QString PageSaver::SaveTagKey_PageNameUserSet = QString("pagenameuserset");
+QString PageSaver::SaveTagKey_PageUserCreated = QString("pageusercreated");
 QString PageSaver::SaveTagKey_PageDesignator = QString("pagedesignator");
 QString PageSaver::SaveTagKey_PageUid = QString("pageuid");
 QString PageSaver::SaveTagKey_PageFile = QString("filepath");
@@ -381,6 +382,7 @@ QVariantMap PageSaver::saveReorderablePage(ReorderablePage * p_reorderPage,Launc
 	settings.beginGroup("header");
 	settings.setValue(PageSaver::SaveTagKey_PageName,p_reorderPage->property(Page::PageNamePropertyName).toString());
 	settings.setValue(PageSaver::SaveTagKey_PageNameUserSet,p_reorderPage->property(Page::PageNameUserSetPropertyName).toBool());
+	settings.setValue(PageSaver::SaveTagKey_PageUserCreated,p_reorderPage->property(Page::PageUserCreatedPropertyName).toBool());
 	settings.setValue(PageSaver::SaveTagKey_PageDesignator,p_reorderPage->property(Page::PageDesignatorPropertyName).toString());
 	settings.setValue(PageSaver::SaveTagKey_PageType,QString(p_reorderPage->metaObject()->className()));
 	settings.setValue(PageSaver::SaveTagKey_PageUid,p_reorderPage->uid().toString());
