@@ -38,6 +38,7 @@
 #include "VirtualKeyboardPreferences.h"
 #include <QLocale>
 #include "Localization.h"
+#include <dlfcn.h>
 
 static const char* s_defaultLocale = "en_us";
 static const char* s_defaultLocaleRegion = "us";
@@ -47,11 +48,33 @@ static const char* s_prefsDbPath = "/var/luna/preferences/systemprefs.db";
 static const char* s_logChannel = "Preferences";
 
 #ifdef HAVE_QPA
-// libqpalm only grew setAdvancedGestures() in webOS 3.0.5; 3.0.4 does not export
-// it. Declaring it weak keeps one source tree linking and running on both -- the
-// address is simply null where the platform lacks it, so the call has to be
-// guarded (see setPreference below).
-extern "C" void setAdvancedGestures(int) __attribute__((weak));
+// libqpalm grew setAdvancedGestures() late, and not every device has it: topaz 3.0.5
+// exports it, the TouchPad Go's (opal) 3.0.5 libqpalm does not, and neither does 3.0.4.
+//
+// A weak declaration is NOT enough to guard the call. On ARM the address of a weak
+// *function* is the address of its PLT stub, which is never null, so "if (f) f();"
+// sails through the test and then branches through a GOT slot the loader left at zero
+// -- LunaSysMgr dies with pc=0 the first time the prefs subscription delivers
+// sysUiEnableNextPrevGestures. Resolve the symbol at run time, where absent really
+// does come back null.
+typedef void (*SetAdvancedGesturesFn)(int);
+
+#ifndef RTLD_DEFAULT
+// glibc only declares this under _GNU_SOURCE; it is the null pseudo-handle, meaning
+// "search every object already loaded into the process"
+#define RTLD_DEFAULT ((void *)0)
+#endif
+
+static SetAdvancedGesturesFn setAdvancedGesturesFn()
+{
+	static bool s_resolved = false;
+	static SetAdvancedGesturesFn s_fn = 0;
+	if (!s_resolved) {
+		s_resolved = true;
+		s_fn = (SetAdvancedGesturesFn) ::dlsym(RTLD_DEFAULT, "setAdvancedGestures");
+	}
+	return s_fn;
+}
 #endif
 
 Preferences* Preferences::instance()
@@ -882,8 +905,9 @@ bool Preferences::getPreferencesCallback(LSHandle *sh, LSMessage *message, void 
 		if (prefObjPtr) {
 			prefObjPtr->m_sysUiEnableNextPrevGestures = json_object_get_boolean(label);
 #ifdef HAVE_QPA
-			if (setAdvancedGestures)
-				setAdvancedGestures(prefObjPtr->m_sysUiEnableNextPrevGestures ? 1 : 0);
+			SetAdvancedGesturesFn setGestures = setAdvancedGesturesFn();
+			if (setGestures)
+				setGestures(prefObjPtr->m_sysUiEnableNextPrevGestures ? 1 : 0);
 #endif
 		}
 	}
