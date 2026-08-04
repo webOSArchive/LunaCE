@@ -488,6 +488,9 @@ void LauncherObject::slotGroupOverlayMemberPoppedOut(IconBase * p_icon)
 		if (pGroupCell && pLastIcon)
 		{
 			pGroup->removeMember(pLastIcon);
+			//the overlay is still animating out and still holds this icon: take it
+			// back before re-homing it on the page
+			m_qp_groupOverlay->forgetIcon(pLastIcon);
 			pLastIcon->slotDisableIconAutoRepaint();
 			pLastIcon->setParentItem(pPage);
 			pLastIcon->take(pPage);

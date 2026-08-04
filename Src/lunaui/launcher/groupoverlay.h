@@ -24,7 +24,9 @@
 
 #include <QList>
 #include <QPointer>
+#include <QPointF>
 #include <QRectF>
+#include <QString>
 #include <QFont>
 
 class LauncherObject;
@@ -35,6 +37,7 @@ class QTapGesture;
 class QTapAndHoldGesture;
 class QGestureEvent;
 class QKeyEvent;
+class QPropertyAnimation;
 
 /*
  * GroupOverlay - the floating panel that opens when an app group icon is tapped.
@@ -48,10 +51,16 @@ class QKeyEvent;
  * Tapping the title starts inline renaming: the overlay registers itself as the
  * IME's InputClient (which raises the virtual keyboard, whose keystrokes arrive
  * as QKeyEvents on the scene focus item = this overlay).
+ *
+ * Opening and closing are animated by the openProgress property (0 = gone,
+ * 1 = fully open): the panel and its member icons scale up out of the group
+ * icon that was tapped while the backdrop dim fades in, and reverse on close.
  */
 class GroupOverlay : public ThingPaintable , public InputClient
 {
 	Q_OBJECT
+
+	Q_PROPERTY(qreal openProgress READ openProgress WRITE setOpenProgress)
 
 public:
 
@@ -85,11 +94,19 @@ public:
 	virtual void commitText(const std::string& text);
 	virtual void performEditorAction(PalmIME::FieldAction action);
 
+	//////// open/close animation ////////
+	qreal openProgress() const;
+	void setOpenProgress(qreal progress);
+
 Q_SIGNALS:
 
 	void signalMemberIconTapped(IconBase * p_icon);
 	void signalMemberIconPoppedOut(IconBase * p_icon);
 	void signalDismissed();
+
+protected Q_SLOTS:
+
+	void slotOpenCloseAnimationFinished();
 
 protected:
 
@@ -108,6 +125,15 @@ protected:
 
 	IconBase * memberAtPointICS(const QPointF& pointICS) const;
 
+	//////// open/close animation ////////
+	void startOpenCloseAnimation(bool opening);
+	//ends a close that is still running (releases the icons, hides the item)
+	void finishClose();
+	//the point the panel grows out of/shrinks back into: the group icon, if it can be located
+	void computeAnimationOrigin();
+	qreal animationScale() const;
+	void applyOpenProgressToIcons();
+
 private:
 
 	QPointer<LauncherObject> m_qp_launcher;
@@ -115,6 +141,11 @@ private:
 	QPointer<ReorderablePage> m_qp_ownerPage;
 
 	bool m_showing;
+	bool m_closing;			//animating out; the group/page pointers are already cleared
+	qreal m_openProgress;
+	QPointer<QPropertyAnimation> m_qp_openCloseAnimation;
+	QPointF m_originICS;
+	QString m_titleText;	//cached: the group icon can go away mid-close
 	bool m_editingName;
 	QString m_editBuffer;
 	QPointer<QGraphicsObject> m_qp_prevFocusItem;	//scene focus to restore after editing

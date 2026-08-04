@@ -32,6 +32,8 @@
 #include <QGraphicsScene>
 #include <QKeyEvent>
 #include <QFocusEvent>
+#include <QPropertyAnimation>
+#include <QEasingCurve>
 
 #include <cstring>
 #include <glib.h>
@@ -45,6 +47,10 @@
 //how far the panel shifts up while the virtual keyboard is up for renaming
 #define GROUP_OVERLAY_EDIT_SHIFT_UP_PX	140
 #define GROUP_OVERLAY_MAX_NAME_LEN		24
+//open/close animation: a short scale-and-fade out of (and back into) the group icon
+#define GROUP_OVERLAY_OPEN_ANIM_MS		160
+#define GROUP_OVERLAY_CLOSE_ANIM_MS		130
+#define GROUP_OVERLAY_ANIM_MIN_SCALE	0.85
 
 GroupOverlay::GroupOverlay(const QRectF& geometry,LauncherObject * p_launcher)
 : ThingPaintable(geometry)
@@ -52,6 +58,8 @@ GroupOverlay::GroupOverlay(const QRectF& geometry,LauncherObject * p_launcher)
 , m_qp_groupIcon(0)
 , m_qp_ownerPage(0)
 , m_showing(false)
+, m_closing(false)
+, m_openProgress(0.0)
 , m_editingName(false)
 {
 	m_titleFont = QFont(QString("Prelude"));
@@ -64,6 +72,10 @@ GroupOverlay::GroupOverlay(const QRectF& geometry,LauncherObject * p_launcher)
 	setFlag(QGraphicsItem::ItemIsFocusable,true);
 	setZValue(100.0);
 	setVisible(false);
+
+	QPropertyAnimation * pAnim = new QPropertyAnimation(this,"openProgress",this);
+	connect(pAnim,SIGNAL(finished()),this,SLOT(slotOpenCloseAnimationFinished()));
+	m_qp_openCloseAnimation = pAnim;
 }
 
 //virtual
@@ -100,11 +112,16 @@ void GroupOverlay::showForGroup(GroupIcon * p_groupIcon,ReorderablePage * p_owne
 	{
 		hideOverlay();
 	}
+	//if a close was still animating out, complete it now rather than opening on top of it
+	finishClose();
 	m_qp_groupIcon = p_groupIcon;
 	m_qp_ownerPage = p_ownerPage;
+	m_titleText = p_groupIcon->groupName();
 	m_showing = true;
+	setAcceptTouchEvents(true);
 	relayoutMembers();
 	setVisible(true);
+	startOpenCloseAnimation(true);
 	update();
 }
 
@@ -118,12 +135,16 @@ void GroupOverlay::hideOverlay()
 	{
 		commitNameEdit();
 	}
-	releaseShownIcons();
+	m_showing = false;
+	m_closing = true;
+	//stop shielding right away: the launcher is the user's again the moment the panel
+	// starts going away, and the member icons are still children until the close finishes
+	setAcceptTouchEvents(false);
+	//callers act on the group/page the moment they ask for the hide, so let go of them now
 	m_qp_groupIcon = 0;
 	m_qp_ownerPage = 0;
-	m_showing = false;
-	setVisible(false);
 	Q_EMIT signalDismissed();
+	startOpenCloseAnimation(false);
 }
 
 void GroupOverlay::releaseShownIcons()
@@ -131,18 +152,121 @@ void GroupOverlay::releaseShownIcons()
 	for (QList<QPointer<IconBase> >::iterator it = m_shownIcons.begin();
 			it != m_shownIcons.end();++it)
 	{
-		if (*it)
+		if (!(*it))
 		{
-			(*it)->slotDisableIconAutoRepaint();
-			(*it)->setParentItem(0);
-			if ((*it)->scene())
-			{
-				(*it)->scene()->removeItem(*it);
-			}
+			continue;
+		}
+		//undo whatever the open/close animation left on the icon
+		(*it)->setOpacity(1.0);
+		(*it)->setScale(1.0);
+		if ((*it)->parentItem() != this)
+		{
+			//someone took it over while the panel was animating out (see forgetIcon);
+			// it's theirs now, don't yank it out of the scene
+			continue;
+		}
+		(*it)->slotDisableIconAutoRepaint();
+		(*it)->setParentItem(0);
+		if ((*it)->scene())
+		{
+			(*it)->scene()->removeItem(*it);
 		}
 	}
 	m_shownIcons.clear();
 	m_iconRects.clear();
+}
+
+qreal GroupOverlay::openProgress() const
+{
+	return m_openProgress;
+}
+
+void GroupOverlay::setOpenProgress(qreal progress)
+{
+	m_openProgress = qBound((qreal)0.0,progress,(qreal)1.0);
+	applyOpenProgressToIcons();
+	update();
+}
+
+qreal GroupOverlay::animationScale() const
+{
+	return GROUP_OVERLAY_ANIM_MIN_SCALE
+			+ (1.0 - GROUP_OVERLAY_ANIM_MIN_SCALE) * m_openProgress;
+}
+
+void GroupOverlay::startOpenCloseAnimation(bool opening)
+{
+	if (!m_qp_openCloseAnimation)
+	{
+		//no animator (shouldn't happen): just snap
+		setOpenProgress(opening ? 1.0 : 0.0);
+		if (!opening)
+		{
+			finishClose();
+		}
+		return;
+	}
+	m_qp_openCloseAnimation->stop();
+	m_qp_openCloseAnimation->setDuration(opening ? GROUP_OVERLAY_OPEN_ANIM_MS
+											: GROUP_OVERLAY_CLOSE_ANIM_MS);
+	m_qp_openCloseAnimation->setEasingCurve(opening ? QEasingCurve::OutCubic
+											: QEasingCurve::InCubic);
+	m_qp_openCloseAnimation->setStartValue(m_openProgress);
+	m_qp_openCloseAnimation->setEndValue(opening ? 1.0 : 0.0);
+	m_qp_openCloseAnimation->start();
+}
+
+//protected Q_SLOTS:
+void GroupOverlay::slotOpenCloseAnimationFinished()
+{
+	if (m_closing)
+	{
+		finishClose();
+	}
+}
+
+void GroupOverlay::finishClose()
+{
+	if (!m_closing)
+	{
+		return;
+	}
+	m_closing = false;
+	if (m_qp_openCloseAnimation)
+	{
+		m_qp_openCloseAnimation->stop();
+	}
+	m_openProgress = 0.0;
+	releaseShownIcons();
+	m_titleText.clear();
+	setVisible(false);
+	update();
+}
+
+void GroupOverlay::computeAnimationOrigin()
+{
+	//grow out of the group icon the user tapped, when it can be located
+	m_originICS = m_panelRect.center();
+	if (m_qp_groupIcon && scene() && (m_qp_groupIcon->scene() == scene()))
+	{
+		m_originICS = mapFromScene(m_qp_groupIcon->mapToScene(QPointF(0.0,0.0)));
+	}
+}
+
+void GroupOverlay::applyOpenProgressToIcons()
+{
+	qreal scale = animationScale();
+	for (int i = 0;i < m_shownIcons.size();++i)
+	{
+		if ((!m_shownIcons[i]) || (m_shownIcons[i]->parentItem() != this))
+		{
+			continue;
+		}
+		m_shownIcons[i]->setOpacity(m_openProgress);
+		m_shownIcons[i]->setScale(scale);
+		m_shownIcons[i]->setPos(m_originICS
+								+ (m_iconRects[i].center() - m_originICS) * scale);
+	}
 }
 
 void GroupOverlay::relayoutMembers()
@@ -181,6 +305,7 @@ void GroupOverlay::relayoutMembers()
 	qreal panelH = rows * cellEdge + GROUP_OVERLAY_TITLE_HEIGHT_PX + 2 * GROUP_OVERLAY_PADDING_PX;
 	//ICS is centered around 0
 	m_panelRect = QRectF(-panelW/2.0,-panelH/2.0,panelW,panelH);
+	computeAnimationOrigin();
 	m_titleRect = QRectF(m_panelRect.left() + GROUP_OVERLAY_PADDING_PX,
 						m_panelRect.top() + GROUP_OVERLAY_PADDING_PX/2,
 						panelW - 2*GROUP_OVERLAY_PADDING_PX,
@@ -210,9 +335,10 @@ void GroupOverlay::relayoutMembers()
 		pMemberIcon->setParentItem(this);
 		pMemberIcon->slotEnableIconAutoRepaint();
 		pMemberIcon->clearAutopaintClipRect();
-		pMemberIcon->setPos(cellRect.center());
 		pMemberIcon->setZValue(zValue()+1.0);
 	}
+	//place (and scale/fade) the members for wherever the open/close animation is right now
+	applyOpenProgressToIcons();
 	update();
 }
 
@@ -220,6 +346,8 @@ void GroupOverlay::relayoutMembers()
 bool GroupOverlay::resize(quint32 newWidth,quint32 newHeight)
 {
 	ThingPaintable::resize(newWidth,newHeight);
+	//a panel animating out of a geometry that no longer exists: just end it
+	finishClose();
 	if (m_showing)
 	{
 		//re-center the panel (and re-place the member icons) in the new geometry
@@ -245,6 +373,9 @@ void GroupOverlay::forgetIcon(IconBase * p_icon)
 	{
 		if (m_shownIcons[i].data() == p_icon)
 		{
+			//the icon may be mid open/close animation; hand it over unscaled and opaque
+			p_icon->setOpacity(1.0);
+			p_icon->setScale(1.0);
 			m_shownIcons.removeAt(i);
 			m_iconRects.removeAt(i);
 		}
@@ -293,11 +424,9 @@ void GroupOverlay::startNameEdit()
 	for (int i = 0;i < m_iconRects.size();++i)
 	{
 		m_iconRects[i].translate(0.0,-(qreal)GROUP_OVERLAY_EDIT_SHIFT_UP_PX);
-		if (m_shownIcons[i])
-		{
-			m_shownIcons[i]->setPos(m_iconRects[i].center());
-		}
 	}
+	m_originICS.setY(m_originICS.y() - (qreal)GROUP_OVERLAY_EDIT_SHIFT_UP_PX);
+	applyOpenProgressToIcons();
 	update();
 }
 
@@ -312,6 +441,7 @@ void GroupOverlay::commitNameEdit()
 	{
 		m_qp_groupIcon->setGroupName(newName);
 		m_qp_groupIcon->update();
+		m_titleText = newName;
 		if (m_qp_launcher)
 		{
 			m_qp_launcher->saveCurrentLauncherLayouts();
@@ -524,36 +654,44 @@ void GroupOverlay::paint(QPainter * painter,const QStyleOptionGraphicsItem * opt
 {
 	Q_UNUSED(option);
 	Q_UNUSED(widget);
-	if (!m_showing)
+	if ((!m_showing) && (!m_closing))
 	{
 		return;
 	}
-	//dim the launcher behind the panel
-	painter->fillRect(m_geom,QColor(0,0,0,120));
+	//dim the launcher behind the panel; the dim fades with the panel
+	painter->fillRect(m_geom,QColor(0,0,0,(int)(120.0 * m_openProgress)));
 
 	painter->setRenderHint(QPainter::Antialiasing);
+
+	//the panel scales out of (and back into) the group icon, fading as it goes
+	qreal scale = animationScale();
+	painter->save();
+	painter->translate(m_originICS);
+	painter->scale(scale,scale);
+	painter->translate(-m_originICS);
+	painter->setOpacity(painter->opacity() * m_openProgress);
+
 	painter->setPen(QPen(QColor(255,255,255,90),1.5));
 	painter->setBrush(QColor(25,25,25,235));
 	painter->drawRoundedRect(m_panelRect,12.0,12.0);
 
-	if (m_qp_groupIcon)
+	painter->setFont(m_titleFont);
+	if (m_editingName)
 	{
-		painter->setFont(m_titleFont);
-		if (m_editingName)
-		{
-			//edit box around the title, with a simple trailing-bar cursor
-			painter->setPen(QPen(QColor(140,180,255,220),1.5));
-			painter->setBrush(QColor(0,0,0,180));
-			painter->drawRoundedRect(m_titleRect.adjusted(4.0,4.0,-4.0,-4.0),6.0,6.0);
-			painter->setPen(QColor(255,255,255,235));
-			painter->drawText(m_titleRect,Qt::AlignCenter,m_editBuffer + QChar('|'));
-		}
-		else
-		{
-			painter->setPen(QColor(255,255,255,235));
-			painter->drawText(m_titleRect,Qt::AlignCenter,m_qp_groupIcon->groupName());
-		}
+		//edit box around the title, with a simple trailing-bar cursor
+		painter->setPen(QPen(QColor(140,180,255,220),1.5));
+		painter->setBrush(QColor(0,0,0,180));
+		painter->drawRoundedRect(m_titleRect.adjusted(4.0,4.0,-4.0,-4.0),6.0,6.0);
+		painter->setPen(QColor(255,255,255,235));
+		painter->drawText(m_titleRect,Qt::AlignCenter,m_editBuffer + QChar('|'));
 	}
+	else if (!m_titleText.isEmpty())
+	{
+		painter->setPen(QColor(255,255,255,235));
+		painter->drawText(m_titleRect,Qt::AlignCenter,m_titleText);
+	}
+
+	painter->restore();
 }
 
 //virtual
