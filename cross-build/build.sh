@@ -1,17 +1,12 @@
 #!/bin/bash
 # Cross-build LunaCE (LunaSysMgr) for the HP TouchPad (topaz) or TouchPad Go (opal),
-# against either webOS release.
+# against webOS 3.0.5.
 #
-#   ./cross-build/build.sh                                 topaz, webOS 3.0.5 (default)
-#   MACHINE=opal ./cross-build/build.sh                     opal, webOS 3.0.5
-#   WEBOS_ABI=3.0.4 ./cross-build/build.sh                 topaz, webOS 3.0.4
-#   MACHINE=opal WEBOS_ABI=3.0.4 ./cross-build/build.sh     opal, webOS 3.0.4
+#   ./cross-build/build.sh                  topaz (default)
+#   MACHINE=opal ./cross-build/build.sh     opal
 #
-# MACHINE and WEBOS_ABI are independent. MACHINE picks the hardware support
-# (HostArmTopaz vs HostArmOpal, and which rendering options are enabled);
-# WEBOS_ABI picks which release's libraries and ABI we build against. Both tablets
-# shipped in 3.0.4 and 3.0.5 flavours -- on the Go it went by radio -- so neither
-# one implies the other.
+# MACHINE picks the hardware support: HostArmTopaz vs HostArmOpal, and which
+# rendering options are enabled.
 #
 # Pass "reconf" as the first argument to re-run qmake; anything else goes to make.
 #
@@ -26,10 +21,7 @@
 #     staging/armv7/       webOS 3.0.5 rootfs (from the webOS Doctor) overlaid with
 #                          the WOCE build-support headers (Piranha, WebKitLuna,
 #                          sysmgr-ipc, Qt, ...)
-#     staging/armv7-304/   the same tree with the shared libraries replaced by 3.0.4
-#                          ones off a device and a few headers edited to match --
-#                          see mk-staging-304.sh
-#     sysmgr-build[-<machine>][-304]/   shadow build dirs, one per combination
+#     sysmgr-build[-<machine>]/   shadow build dirs, one per machine
 #
 # See cross-build/README.md for how to assemble the workspace.
 #
@@ -45,21 +37,14 @@ PDK_TC=/opt/PalmPDK/arm-gcc
 QT_HOST="$WORKSPACE/qt4-host/usr/lib/x86_64-linux-gnu/qt4/bin"
 
 export MACHINE="${MACHINE:-topaz}"
-export WEBOS_ABI="${WEBOS_ABI:-3.0.5}"
 
-case "$WEBOS_ABI" in
-    3.0.4) STAGING_DEFAULT="$WORKSPACE/staging/armv7-304"; SUFFIX="-304" ;;
-    3.0.5) STAGING_DEFAULT="$WORKSPACE/staging/armv7";     SUFFIX="" ;;
-    *) echo "Error: WEBOS_ABI must be 3.0.4 or 3.0.5, got '$WEBOS_ABI'." >&2; exit 1 ;;
-esac
-
-# topaz/3.0.5 keeps the paths it has always used, so an existing build stays valid.
+# topaz keeps the paths it has always used, so an existing build stays valid.
 if [ "$MACHINE" = topaz ]; then
-    BUILD_DEFAULT="$WORKSPACE/sysmgr-build$SUFFIX"
+    BUILD_DEFAULT="$WORKSPACE/sysmgr-build"
 else
-    BUILD_DEFAULT="$WORKSPACE/sysmgr-build-$MACHINE$SUFFIX"
+    BUILD_DEFAULT="$WORKSPACE/sysmgr-build-$MACHINE"
 fi
-STAGING="${STAGING:-$STAGING_DEFAULT}"
+STAGING="${STAGING:-$WORKSPACE/staging/armv7}"
 
 [ -d "$WORKSPACE" ] || {
     echo "Error: build workspace $WORKSPACE is missing." >&2
@@ -67,11 +52,7 @@ STAGING="${STAGING:-$STAGING_DEFAULT}"
     exit 1
 }
 [ -x "$QT_HOST/qmake" ] || { echo "Error: no host qmake at $QT_HOST/qmake." >&2; exit 1; }
-[ -d "$STAGING" ] || {
-    echo "Error: staging tree $STAGING is missing." >&2
-    [ "$WEBOS_ABI" = 3.0.4 ] && echo "       Build it with cross-build/mk-staging-304.sh." >&2
-    exit 1
-}
+[ -d "$STAGING" ] || { echo "Error: staging tree $STAGING is missing." >&2; exit 1; }
 
 export PATH="$PDK_TC/bin:$QT_HOST:$PATH"
 export STAGING_INCDIR="$STAGING/usr/include"
@@ -81,13 +62,11 @@ BUILD_DIR="${BUILD_DIR:-$BUILD_DEFAULT}"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-# qmake reads Qt's header/library roots from the qt.conf beside it, which would
-# otherwise pin every build to whichever staging tree was configured last -- and
-# silently leave the 3.0.5 libraries on a 3.0.4 link line as a fallback. Write it on
-# EVERY run, not just when we run qmake ourselves: a qmake-generated Makefile re-runs
-# qmake behind our back whenever sysmgr.pro (or an included .pri) is newer, and that
-# re-run would otherwise pick up the other ABI's headers and quietly produce a binary
-# that segfaults on boot.
+# qmake reads Qt's header/library roots from the qt.conf beside it, so it has to name
+# the tree this build is against. Write it on EVERY run, not just when we run qmake
+# ourselves: a qmake-generated Makefile re-runs qmake behind our back whenever
+# sysmgr.pro (or an included .pri) is newer, and that re-run picks up whatever qt.conf
+# says at the time -- a stale one quietly produces a binary that segfaults on boot.
 cat > "$QT_HOST/qt.conf" <<EOF
 [Paths]
 Prefix = $STAGING/usr
@@ -123,4 +102,4 @@ if [ -f "$MOC_LAUNCHER" ]; then
     echo "moc check: launcher slots registered ($(grep -c 'case [0-9]*:' "$MOC_LAUNCHER") total)"
 fi
 
-echo "Built $BUILD_DIR/release-$MACHINE/LunaSysMgr  (MACHINE=$MACHINE WEBOS_ABI=$WEBOS_ABI)"
+echo "Built $BUILD_DIR/release-$MACHINE/LunaSysMgr  (MACHINE=$MACHINE)"
