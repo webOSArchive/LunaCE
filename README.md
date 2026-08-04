@@ -115,6 +115,14 @@ pull in `device.pri`. Two settings it must carry:
 
 ### 4. Build
 
+`cross-build/build.sh` wraps the whole thing once the staging tree exists. It expects
+the workspace beside this checkout (override with `LUNACE_BUILD_DIR`):
+
+    ./cross-build/build.sh reconf -j$(nproc)                  # topaz, 3.0.5
+    MACHINE=opal WEBOS_ABI=3.0.4 ./cross-build/build.sh -j$(nproc)
+
+See [cross-build/README.md](cross-build/README.md). By hand it is:
+
     export PATH=/opt/PalmPDK/arm-gcc/bin:<qt-host-tools>:$PATH
     export STAGING_INCDIR=<staging>/usr/include
     export STAGING_LIBDIR=<staging>/usr/lib
@@ -163,7 +171,8 @@ Two knobs, independent of each other:
 its headers already guard those. `libmedia-api` and `libWebKitLuna` have no equivalent
 guard, so a 3.0.4 staging tree is required as well: take the 3.0.5 tree, swap in the
 shared libraries from a 3.0.4 device, and comment the 3.0.5-only virtuals out of
-`media/MediaPlayer.h` and `webkit/palmwebviewclient.h`.
+`media/MediaPlayer.h` and `webkit/palmwebviewclient.h`. `cross-build/mk-staging-304.sh`
+does all of that from an attached 3.0.4 device.
 
 If you add a library to the mix, compare vtable *sizes* before trusting a build —
 matching symbols are not enough:
