@@ -81,11 +81,14 @@ BUILD_DIR="${BUILD_DIR:-$BUILD_DEFAULT}"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-if [ ! -f Makefile ] || [ "$1" = "reconf" ]; then
-    # qmake reads Qt's header/library roots from the qt.conf beside it, which would
-    # otherwise pin every build to whichever staging tree was configured last -- and
-    # silently leave the 3.0.5 libraries on a 3.0.4 link line as a fallback.
-    cat > "$QT_HOST/qt.conf" <<EOF
+# qmake reads Qt's header/library roots from the qt.conf beside it, which would
+# otherwise pin every build to whichever staging tree was configured last -- and
+# silently leave the 3.0.5 libraries on a 3.0.4 link line as a fallback. Write it on
+# EVERY run, not just when we run qmake ourselves: a qmake-generated Makefile re-runs
+# qmake behind our back whenever sysmgr.pro (or an included .pri) is newer, and that
+# re-run would otherwise pick up the other ABI's headers and quietly produce a binary
+# that segfaults on boot.
+cat > "$QT_HOST/qt.conf" <<EOF
 [Paths]
 Prefix = $STAGING/usr
 Headers = $STAGING/usr/include
@@ -93,6 +96,8 @@ Libraries = $STAGING/usr/lib
 Binaries = $QT_HOST
 Data = $WORKSPACE/qt4-host/usr/share/qt4
 EOF
+
+if [ ! -f Makefile ] || [ "$1" = "reconf" ]; then
     "$QT_HOST/qmake" "$SRC/sysmgr.pro" \
         -spec qws/linux-armv7-g++ \
         "LIBS += -Wl,-rpath-link,$STAGING_LIBDIR -Wl,-rpath-link,$STAGING/lib" \
