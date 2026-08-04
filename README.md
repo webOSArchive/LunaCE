@@ -177,14 +177,19 @@ Installing
 
 You do not have to build anything to try this. `bin/` carries prebuilt binaries:
 
-* `bin/LunaSysMgr-LunaCE` — this tree, built for topaz
-* `bin/LunaSysMgr-Stock` — HP's original webOS 3.0.5 launcher, to go back
+* `bin/LunaSysMgr-LunaCE-topaz`, `bin/LunaSysMgr-LunaCE-opal` — this tree, for the
+  TouchPad and the TouchPad Go
+* `bin/LunaSysMgr-Stock-topaz`, `bin/LunaSysMgr-Stock-opal` — HP's original webOS
+  3.0.5 launchers, to go back
 
 `install.sh` pushes one over novacom and restarts the UI rather than rebooting:
 
     ./install.sh           # asks which one you want
     ./install.sh --lunace
     ./install.sh --stock
+
+It reads the model and the webOS release off the attached device and picks the
+matching binary, so there is nothing to choose but LunaCE or stock.
 
 The device must be connected by USB with novacomd running. Restarting LunaSysMgr takes
 the UI down for roughly half a minute and does not preserve open cards.

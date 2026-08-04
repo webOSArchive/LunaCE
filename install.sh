@@ -1,10 +1,19 @@
 #!/bin/sh
 #
-# Install LunaCE (or put stock webOS back) on an HP TouchPad over novacom.
+# Install LunaCE (or put stock webOS back) on an HP TouchPad or TouchPad Go,
+# over novacom.
 #
 #   ./install.sh           ask which version to install
 #   ./install.sh --lunace  install LunaCE
 #   ./install.sh --stock   restore the stock webOS 3.0.5 launcher
+#
+# Both tablets run webOS 3.0.5 but need their own binary, since the hardware
+# support is compiled in. novacom says which one is attached ("topaz-linux" or
+# "opal-linux"), so this picks the matching build rather than asking. It also
+# checks the release the device reports: on 3.0.4 the vtables in Qt,
+# libmedia-api and libWebKitLuna do not line up with a 3.0.5 build, which
+# crash-loops rather than failing outright -- worth catching before overwriting
+# a working launcher.
 
 set -e
 
@@ -12,20 +21,34 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 
 echo "LunaCE Install"
 echo "=============="
-echo "Checking for connected TouchPad ..."
-if ! novacom -l 2>/dev/null | grep -q "topaz-linux"; then
-    echo "Error: No TouchPad detected. Connect via USB and try again."
-    exit 1
-fi
+echo "Looking for a connected tablet ..."
+
+MACHINE=$(novacom -l 2>/dev/null | sed -n 's/.*[[:space:]]\([a-z0-9]*\)-linux.*/\1/p' | head -1)
+case "$MACHINE" in
+    topaz) TABLET="TouchPad" ;;
+    opal)  TABLET="TouchPad Go" ;;
+    "")    echo "Error: No tablet detected. Connect via USB and try again."; exit 1 ;;
+    *)     echo "Error: unsupported device '$MACHINE-linux'."; exit 1 ;;
+esac
+
+VERSION=$(novacom run file://bin/cat -- /etc/palm-build-info 2>/dev/null \
+          | sed -n 's/^PRODUCT_VERSION_STRING=//p' | tr -d '\r')
+case "$VERSION" in
+    *3.0.5*) ;;
+    "")      echo "Error: could not read the webOS version off the device."; exit 1 ;;
+    *)       echo "Error: this $TABLET reports '$VERSION'; LunaCE needs webOS 3.0.5."; exit 1 ;;
+esac
+
+echo "Found a $TABLET running $VERSION."
 
 choose_stock() {
-    LUNA_BIN="$HERE/bin/LunaSysMgr-Stock"
+    LUNA_BIN="$HERE/bin/LunaSysMgr-Stock-$MACHINE"
     WHAT="stock webOS 3.0.5"
     NEXT="To install LunaCE:     ./install.sh --lunace"
 }
 
 choose_lunace() {
-    LUNA_BIN="$HERE/bin/LunaSysMgr-LunaCE"
+    LUNA_BIN="$HERE/bin/LunaSysMgr-LunaCE-$MACHINE"
     WHAT="LunaCE"
     NEXT="To go back to stock:   ./install.sh --stock"
 }
