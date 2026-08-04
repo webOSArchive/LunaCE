@@ -9,6 +9,11 @@ This tree targets **webOS 3.0.5 on the HP TouchPad**, and contains the LunaCE li
 through 5.0.0 plus newer launcher work — app groups, renameable tabs, and adding and
 removing tabs.
 
+It also builds for **webOS 3.0.4** and for the **TouchPad Go** (`opal`). Those are two
+separate choices: the OS release and the hardware. Both tablets shipped in 3.0.4 and
+3.0.5 flavours — on the Go it went by radio — so check what a device actually runs
+rather than assuming from the model. See [webOS 3.0.4](#webos-304) below.
+
 
 Credits
 -------
@@ -62,8 +67,10 @@ Building
 --------
 
 This is a cross-compile for ARM. It will not build against a modern desktop Qt:
-LunaSysMgr needs webOS 3.0.5's own Qt 4.8 plus a pile of closed-source HP libraries,
-so the recipe is "assemble a staging tree, then point qmake at it".
+LunaSysMgr needs the target release's own Qt 4.8 plus a pile of closed-source HP
+libraries, so the recipe is "assemble a staging tree, then point qmake at it". The
+steps below build the 3.0.5 tree; a 3.0.4 tree is derived from it, as described under
+[webOS 3.0.4](#webos-304).
 
 ### 1. Toolchain
 
@@ -111,7 +118,8 @@ pull in `device.pri`. Two settings it must carry:
     export PATH=/opt/PalmPDK/arm-gcc/bin:<qt-host-tools>:$PATH
     export STAGING_INCDIR=<staging>/usr/include
     export STAGING_LIBDIR=<staging>/usr/lib
-    export MACHINE=topaz
+    export MACHINE=topaz          # or opal, for the TouchPad Go
+    export WEBOS_ABI=3.0.5        # or 3.0.4 — see "webOS 3.0.4" below
 
     qmake <path-to-this-source>/sysmgr.pro -spec qws/linux-armv7-g++ \
         "QMAKE_LFLAGS += -L$STAGING_LIBDIR -L<staging>/lib"
@@ -135,24 +143,64 @@ generated moc, not just the build:
 A registered slot appears in moc's `qt_metacall` dispatch. `0` means it isn't one.
 
 
+<a name="webos-304"></a>webOS 3.0.4
+-----------
+
+3.0.4 needs its own binary. It ships the same Qt 4.8.0 as 3.0.5 but configured
+without `QAction` and `QClipboard`, and its `libmedia-api` and `libWebKitLuna` predate
+virtual methods that 3.0.5 added. Because those methods are *virtual*, every virtual
+declared after them shifts a slot, so a 3.0.5 build calls through the wrong vtable
+entries — it dies at load on an undefined `QWidget::actionEvent` (the upstart job sets
+`LD_BIND_NOW=1`), and if you get past that, segfaults inside `libmedia-api` shortly
+after. None of it is a link error, so a build that looks clean can still crash-loop.
+
+Two knobs, independent of each other:
+
+    MACHINE=topaz|opal        which tablet (HostArmTopaz vs HostArmOpal)
+    WEBOS_ABI=3.0.5|3.0.4     which release's libraries and ABI (default 3.0.5)
+
+`WEBOS_ABI=3.0.4` defines `QT_NO_ACTION` and `QT_NO_CLIPBOARD`, which is all Qt needs —
+its headers already guard those. `libmedia-api` and `libWebKitLuna` have no equivalent
+guard, so a 3.0.4 staging tree is required as well: take the 3.0.5 tree, swap in the
+shared libraries from a 3.0.4 device, and comment the 3.0.5-only virtuals out of
+`media/MediaPlayer.h` and `webkit/palmwebviewclient.h`.
+
+If you add a library to the mix, compare vtable *sizes* before trusting a build —
+matching symbols are not enough:
+
+    nm -D -S <3.0.4-lib> | grep _ZTV   # against the same from 3.0.5
+
+
 Installing
 ----------
 
-You do not have to build anything to try this. `bin/` carries two prebuilt binaries:
+You do not have to build anything to try this. `bin/` carries prebuilt binaries:
 
-* `bin/LunaSysMgr-LunaCE` — this tree, built for topaz
+* `bin/LunaSysMgr-LunaCE` — this tree, built for topaz on 3.0.5
 * `bin/LunaSysMgr-Stock` — HP's original webOS 3.0.5 launcher, to go back
+* `bin/LunaSysMgr-LunaCE-opal-3.0.4` — this tree, built for the TouchPad Go on 3.0.4
 
-`install.sh` pushes one of them over novacom and restarts the UI rather than rebooting:
+There are two install scripts, split by webOS release. Both push a binary over novacom
+and restart the UI rather than rebooting:
 
-    ./install.sh           # asks which one you want
-    ./install.sh --lunace  # install LunaCE
-    ./install.sh --stock   # restore the stock launcher
+    ./install.sh           # webOS 3.0.5 (topaz); asks which one you want
+    ./install.sh --lunace
+    ./install.sh --stock
+
+    ./install-304.sh       # webOS 3.0.4, either tablet
+    ./install-304.sh --lunace
+    ./install-304.sh --stock
+
+`install-304.sh` checks the version the device reports rather than its model, and picks
+`bin/LunaSysMgr-LunaCE-<machine>-3.0.4` to match. Before its first install it copies the
+device's own launcher to `/var/luna/LunaSysMgr-stock-3.0.4` and restores from there, so
+uninstall gives back *that* tablet's binary — note `install.sh --stock` ships the 3.0.5
+one, which is wrong for a 3.0.4 device.
 
 The device must be connected by USB with novacomd running. Restarting LunaSysMgr takes
 the UI down for roughly half a minute and does not preserve open cards.
 
-If you have built your own, copy it over `bin/LunaSysMgr-LunaCE` first.
+If you have built your own, copy it over the matching file in `bin/` first.
 
 
 Copyright and License Information

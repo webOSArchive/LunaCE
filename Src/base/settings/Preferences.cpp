@@ -46,8 +46,12 @@ static const char* s_prefsDbPath = "/var/luna/preferences/systemprefs.db";
 
 static const char* s_logChannel = "Preferences";
 
-#ifdef HAVE_QPA			
-extern "C" void setAdvancedGestures(int);
+#ifdef HAVE_QPA
+// libqpalm only grew setAdvancedGestures() in webOS 3.0.5; 3.0.4 does not export
+// it. Declaring it weak keeps one source tree linking and running on both -- the
+// address is simply null where the platform lacks it, so the call has to be
+// guarded (see setPreference below).
+extern "C" void setAdvancedGestures(int) __attribute__((weak));
 #endif
 
 Preferences* Preferences::instance()
@@ -878,7 +882,8 @@ bool Preferences::getPreferencesCallback(LSHandle *sh, LSMessage *message, void 
 		if (prefObjPtr) {
 			prefObjPtr->m_sysUiEnableNextPrevGestures = json_object_get_boolean(label);
 #ifdef HAVE_QPA
-			setAdvancedGestures(prefObjPtr->m_sysUiEnableNextPrevGestures ? 1 : 0);
+			if (setAdvancedGestures)
+				setAdvancedGestures(prefObjPtr->m_sysUiEnableNextPrevGestures ? 1 : 0);
 #endif
 		}
 	}

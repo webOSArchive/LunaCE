@@ -118,6 +118,27 @@ contains(MACHINE_NAME, "qemux86") {
     LIBS += -Wl,-rpath $$(STAGING_LIBDIR)
 }
 
+# Which webOS release we are building against. This is independent of MACHINE:
+# both topaz and opal shipped in 3.0.4 and 3.0.5 flavours, so the two have to be
+# chosen separately. Defaults to 3.0.5 when unset, which is what every existing
+# build did.
+WEBOS_ABI = $$(WEBOS_ABI)
+isEmpty(WEBOS_ABI):WEBOS_ABI = 3.0.5
+
+contains(WEBOS_ABI, "3.0.4") {
+	# 3.0.4 builds Qt 4.8.0 without QAction or QClipboard. QWidget::actionEvent()
+	# is virtual and sits behind #ifndef QT_NO_ACTION, so without these defines
+	# every QWidget subclass gets a vtable one slot longer than the device's
+	# libQtGui has room for, and LunaSysMgr dies the moment it loads -- the
+	# upstart job sets LD_BIND_NOW=1 -- on an undefined
+	# _ZN7QWidget11actionEventEP12QActionEvent.
+	#
+	# libmedia-api and libWebKitLuna moved the same way in 3.0.4, but their
+	# headers have no equivalent guard; mk-staging-304.sh edits the declarations
+	# out of the 3.0.4 staging tree instead.
+	DEFINES += QT_NO_ACTION QT_NO_CLIPBOARD
+}
+
 DEFINES += $$TARGET_TYPE HAVE_LUNA_PREF=1 ENABLE_PIRANHA=1 PALM_DEVICE QT_PLUGIN QT_STATICPLUGIN
 
 contains(CONFIG_BUILD, qpa) {
