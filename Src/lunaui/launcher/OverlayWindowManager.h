@@ -353,6 +353,9 @@ private:
 	//the positive space the launcher was last sized to; used to ignore the ime's
 	// shrink and the animation that grows it back (see slotPositiveSpaceChanged)
 	QSize m_launcherAppliedSpaceSize;
+	//true while that size is being held across an ime open/close; only then is a
+	// shrink treated as the keyboard's rather than as a real space change
+	bool m_launcherSpaceHeldForIME;
 	int m_oldDockOffsetFromBottom;
 
 	Window* m_universalSearchWin;

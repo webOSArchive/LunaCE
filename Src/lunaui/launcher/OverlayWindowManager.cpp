@@ -189,6 +189,7 @@ OverlayWindowManager::OverlayWindowManager(int maxWidth, int maxHeight)
 	, m_qp_animateSearchPillOpacity(NULL)
 	, m_inDrag(false)
 	, m_dockOffsetFromBottom(0)
+	, m_launcherSpaceHeldForIME(false)
 	, m_oldDockOffsetFromBottom(0)
 	, m_ignoreKeyDueToSpeedDialEvent(false)
 	, m_keyDown(0)
@@ -1246,25 +1247,52 @@ void OverlayWindowManager::slotPositiveSpaceChangeFinished(const QRect& r)
 
 void OverlayWindowManager::slotPositiveSpaceChanged(const QRect& r)
 {
-	//The launcher does not follow the ime's positive-space changes. Its modal panels
-	// (group overlay, rename dialog) position themselves clear of the keyboard, and
-	// their dim shields must keep covering the whole launcher, so shrinking it just
+	//A full screen app (a PDK game, or an app that asked for the status bar) owns the
+	// status bar strip while it is up, so positive space temporarily starts at the very
+	// top of the screen. The launcher is always drawn below the status bar, so that
+	// strip is never its space: size it to what positive space would be with the strip
+	// still reserved. Taking the full screen height instead made the launcher a status
+	// bar taller than it is ever drawn, and the shrink back on the way out looked
+	// exactly like the ime's - so it was skipped below, and the tab strip stayed riding
+	// up underneath the status bar until the next rotation.
+	QRect launcherSpace = r;
+	const int topPad = Settings::LunaSettings()->positiveSpaceTopPadding;
+	if (launcherSpace.y() < topPad)
+	{
+		//keeps the bottom edge, so this is the same size for every frame of the
+		// full screen transition animation and the launcher never relayouts for it
+		launcherSpace.setY(topPad);
+	}
+
+	//The launcher does not follow the ime's positive-space changes either. Its modal
+	// panels (group overlay, rename dialog) position themselves clear of the keyboard,
+	// and their dim shields must keep covering the whole launcher, so shrinking it just
 	// opened a gap. Ignoring only the shrink was not enough either: when the keyboard
 	// hides, positive space is ANIMATED back up, and applying those intermediate
 	// heights grew the launcher step by step - the visible "bounce".
 	//So: while the keyboard is up, and while the space animates back afterwards
 	// (height still below what the launcher last used), leave the launcher alone.
 	// A width change means a rotation, which must always be applied.
-	if ((r.width() == m_launcherAppliedSpaceSize.width())
-		&& (IMEController::instance()->isIMEOpened()
-			|| (r.height() < m_launcherAppliedSpaceSize.height())))
+	if (launcherSpace.width() == m_launcherAppliedSpaceSize.width())
 	{
-		return;
+		if (IMEController::instance()->isIMEOpened())
+		{
+			m_launcherSpaceHeldForIME = true;
+			return;
+		}
+		//only the keyboard's own settle animation gets a pass here; any other shrink
+		// (a full screen app going away, the dashboard taking negative space) is real
+		if (m_launcherSpaceHeldForIME
+			&& (launcherSpace.height() < m_launcherAppliedSpaceSize.height()))
+		{
+			return;
+		}
 	}
-	m_launcherAppliedSpaceSize = r.size();
+	m_launcherSpaceHeldForIME = false;
+	m_launcherAppliedSpaceSize = launcherSpace.size();
 	if (DimensionsUI::primaryInstance())
 	{
-		DimensionsUI::primaryInstance()->resize(r.width(),r.height());
+		DimensionsUI::primaryInstance()->resize(launcherSpace.width(),launcherSpace.height());
 	}
 }
 
