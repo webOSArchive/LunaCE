@@ -69,7 +69,12 @@ GroupOverlay::GroupOverlay(const QRectF& geometry,LauncherObject * p_launcher)
 	setAcceptTouchEvents(true);
 	grabGesture(Qt::TapGesture);
 	grabGesture(Qt::TapAndHoldGesture);
-	setFlag(QGraphicsItem::ItemIsFocusable,true);
+	//NOT focusable except while renaming (see startNameEdit): the panel covers the
+	// whole launcher, and Qt hands scene focus to the topmost focusable item under a
+	// press, so a focusable panel silently takes the focus the overlay window manager
+	// is holding - and the window manager's "am I still focused?" teardown then never
+	// runs when the launcher hands off to a card
+	setFlag(QGraphicsItem::ItemIsFocusable,false);
 	setZValue(100.0);
 	setVisible(false);
 
@@ -412,6 +417,7 @@ void GroupOverlay::startNameEdit()
 	{
 		m_qp_prevFocusItem = scene()->focusItem()->toGraphicsObject();
 	}
+	setFlag(QGraphicsItem::ItemIsFocusable,true);
 	setFocus(Qt::OtherFocusReason);
 	//and grab the keyboard outright: a stray tap (e.g. one leaking through around the
 	// vkb) can move scene focus mid-edit, and the grab keeps keystrokes coming here
@@ -475,6 +481,8 @@ void GroupOverlay::endNameEditCommon()
 		clearFocus();
 	}
 	m_qp_prevFocusItem = 0;
+	//back to being unfocusable, so later taps on the panel leave scene focus alone
+	setFlag(QGraphicsItem::ItemIsFocusable,false);
 	//snap the panel and members back to their canonical layout
 	if (m_showing)
 	{

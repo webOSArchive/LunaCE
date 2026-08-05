@@ -1296,11 +1296,11 @@ void OverlayWindowManager::slotLauncherClosed()
 {
 	if(SystemUiController::instance()->isCardWindowMaximized()) {
 		SystemUiController::instance()->focusMaximizedCardWindow(true);
-		if(hasFocus()) {
-			clearFocus();
-			setFlag(QGraphicsItem::ItemIsFocusable, false);
-			m_ignoreKeyDueToSpeedDialEvent = false;
-		}
+		//same as slotCardWindowMaximized(): the card owns the keyboard from here on,
+		// so stop being able to take scene focus back from it on the next tap
+		clearFocus();
+		setFlag(QGraphicsItem::ItemIsFocusable, false);
+		m_ignoreKeyDueToSpeedDialEvent = false;
 	} else {
 		Q_EMIT signalFSMShowDock();
 	}
@@ -1763,11 +1763,18 @@ void OverlayWindowManager::slotDisplayStateChange(int newState)
 
 void OverlayWindowManager::slotCardWindowMaximized()
 {
-	if(hasFocus()) {
-		clearFocus();
-		setFlag(QGraphicsItem::ItemIsFocusable, false);
-		m_ignoreKeyDueToSpeedDialEvent = false;
-	}
+	//Give up focusability unconditionally, not just when this item happens to hold
+	// scene focus right now. This item's bounding rect covers the whole screen and it
+	// stacks above the card window manager, so while it stays focusable every tap
+	// inside the maximized app hands it the scene focus instead of the card - and key
+	// events then die in keyPressEvent() below rather than reaching the app. (Text
+	// still arrives through the ime's commit path, which is why only the keys that
+	// route that way - .com, the emoticons - kept working.)
+	//A launcher panel that was tapped last used to leave this hasFocus() false: that
+	// is how launching an app out of a group left it with no keyboard.
+	clearFocus();
+	setFlag(QGraphicsItem::ItemIsFocusable, false);
+	m_ignoreKeyDueToSpeedDialEvent = false;
 	m_dockWin->removeHighlight();
 }
 

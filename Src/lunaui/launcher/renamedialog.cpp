@@ -70,7 +70,9 @@ RenameDialog::RenameDialog(const QRectF& geometry,LauncherObject * p_launcher)
 	setAcceptTouchEvents(true);
 	grabGesture(Qt::TapGesture);
 	grabGesture(Qt::TapAndHoldGesture);
-	setFlag(QGraphicsItem::ItemIsFocusable,true);
+	//only focusable while the dialog is actually up: see the note in the group
+	// overlay's constructor for why a focusable full-launcher panel is a hazard
+	setFlag(QGraphicsItem::ItemIsFocusable,false);
 	setZValue(110.0);
 	setVisible(false);
 }
@@ -152,10 +154,13 @@ void RenameDialog::showDialog(const QString& promptText,const QString& currentTe
 	{
 		m_qp_prevFocusItem = scene()->focusItem()->toGraphicsObject();
 	}
+	setVisible(true);
+	//both of these need the item to be visible already: grabKeyboard() refuses (with a
+	// warning) on a hidden item, and the scene drops focus set on one
+	setFlag(QGraphicsItem::ItemIsFocusable,true);
 	setFocus(Qt::OtherFocusReason);
 	grabKeyboard();
 
-	setVisible(true);
 	update();
 }
 
@@ -179,6 +184,7 @@ void RenameDialog::hideDialog(bool commit,bool notifyOwner)
 		clearFocus();
 	}
 	m_qp_prevFocusItem = 0;
+	setFlag(QGraphicsItem::ItemIsFocusable,false);
 	m_showing = false;
 	m_editBuffer.clear();
 	setVisible(false);
