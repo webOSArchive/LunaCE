@@ -172,6 +172,42 @@ When a device does crash-loop, `/var/log/reports/librdx/` holds rdxd minicore
 reports: registers, per-thread backtraces, symbolized against the binary.
 
 
+Working on the launcher UI
+--------------------------
+
+Every window manager is a `QGraphicsObject` whose bounding rect covers the whole
+screen, and `OverlayWindowManager` — the launcher's — is added to the root item
+*after* `CardWindowManager`, so at equal Z it hit-tests first. It therefore sits
+under every tap, including taps inside a maximized app.
+
+That matters because Qt hands scene focus to the topmost *focusable* item under a
+press (`QGraphicsScenePrivate::sendTouchBeginEvent` does this for touch exactly as
+the mouse path does). Anything left focusable over the cards silently swallows every
+`QKeyEvent`: the launcher's `keyPressEvent` does nothing once a card is maximized,
+and nothing anywhere reports an error. `OverlayWindowManager` drops
+`ItemIsFocusable` when a card maximizes for this reason, and the launcher's own
+full-screen panels — the group overlay, the rename dialog — are focusable only while
+they are actually editing text, so they never take the focus it is holding.
+
+The symptom is not a dead keyboard, which is what makes it confusing. Text still
+reaches the app through `IMEController::commitText`, since the ime client is tracked
+separately from scene focus and is still the card. So **if ordinary keys vanish but
+`.com` and the emoticons still type, suspect scene focus rather than the ime client**
+— those are the `UKeyIsTextShortcutKey` range in `TabletKeymap.h`, and with the
+candidate bar off (its `suggestions` option is never enabled here) they are the only
+keys that do not travel as `QKeyEvent`s.
+
+Two more things worth knowing before moving focus around in here:
+
+* `grabKeyboard()` refuses on a hidden item and only warns, and the scene drops focus
+  set on one. Call `setVisible(true)` first or neither takes effect.
+* The launcher does not simply follow positive space. A full-screen app owns the
+  status bar strip while it is up, and the virtual keyboard shrinks the space and
+  then animates it back; `OverlayWindowManager::slotPositiveSpaceChanged` filters
+  both, so it is sized to the space it will actually be drawn in rather than to
+  whatever arrives.
+
+
 Installing
 ----------
 
