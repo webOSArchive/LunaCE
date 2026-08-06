@@ -227,6 +227,16 @@ void RenameDialog::performEditorAction(PalmIME::FieldAction action)
 }
 
 //virtual
+void RenameDialog::removeInputFocus()
+{
+	//the ime is taking the keyboard away (the vkb's hide key and friends): close the
+	// dialog the same way a tap outside it would, rather than leaving it up with no
+	// keyboard while it holds scene focus and the keyboard grab
+	InputClient::removeInputFocus();
+	hideDialog(m_commitOnTapAway);
+}
+
+//virtual
 bool RenameDialog::sceneEvent(QEvent * event)
 {
 	if (!m_showing)

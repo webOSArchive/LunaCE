@@ -70,6 +70,9 @@ public:
 	// InputClient - virtual keyboard hookup
 	virtual void commitText(const std::string& text);
 	virtual void performEditorAction(PalmIME::FieldAction action);
+	//the ime taking the keyboard away closes the dialog; see the note on the group
+	// overlay's override for what a dialog left open without one costs
+	virtual void removeInputFocus();
 
 Q_SIGNALS:
 

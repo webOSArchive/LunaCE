@@ -100,6 +100,9 @@ public:
 	// InputClient - virtual keyboard hookup
 	virtual void commitText(const std::string& text);
 	virtual void performEditorAction(PalmIME::FieldAction action);
+	//the ime taking the keyboard away ends the edit; without this the panel would sit
+	// there "editing" with no keyboard, and holding on to focus and the keyboard grab
+	virtual void removeInputFocus();
 
 	//////// open/close animation ////////
 	qreal openProgress() const;
@@ -124,6 +127,9 @@ protected:
 	virtual void keyPressEvent(QKeyEvent * event);
 
 	void endNameEditCommon();
+
+	//(re)assert this panel as the ime's client, which raises the virtual keyboard
+	void raiseKeyboardForEdit();
 
 	virtual void paint(QPainter * painter,const QStyleOptionGraphicsItem * option=0,QWidget * widget=0);
 	virtual void paintOffscreen(QPainter * painter);

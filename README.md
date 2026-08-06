@@ -197,10 +197,15 @@ separately from scene focus and is still the card. So **if ordinary keys vanish 
 candidate bar off (its `suggestions` option is never enabled here) they are the only
 keys that do not travel as `QKeyEvent`s.
 
-Two more things worth knowing before moving focus around in here:
+Three more things worth knowing before moving focus around in here:
 
 * `grabKeyboard()` refuses on a hidden item and only warns, and the scene drops focus
   set on one. Call `setVisible(true)` first or neither takes effect.
+* Anything editing text has to override `InputClient::removeInputFocus()`. That is how
+  `IMEController::hideIME()` tells the client the keyboard is being taken away — the
+  vkb's own hide key routes there — and the base implementation only clears a flag. A
+  panel that ignores it stays in its editing state with no keyboard and no way to ask
+  for one back, still holding scene focus and the keyboard grab it took for the edit.
 * The launcher does not simply follow positive space. A full-screen app owns the
   status bar strip while it is up, and the virtual keyboard shrinks the space and
   then animates it back; `OverlayWindowManager::slotPositiveSpaceChanged` filters

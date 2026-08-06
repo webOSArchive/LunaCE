@@ -444,15 +444,7 @@ void GroupOverlay::startNameEdit()
 	m_editingName = true;
 	m_editBuffer = m_qp_groupIcon->groupName();
 
-	//FieldType_Search keeps the keyboard in plain key-event mode (no trace/candidate
-	// machinery, see CandidateBar::setEditorState) - keystrokes arrive as QKeyEvents
-	// on the scene focus item, which is this overlay while editing
-	PalmIME::EditorState editorState(PalmIME::FieldType_Search);
-	::strncpy(editorState.enterKeyLabel,"Done",sizeof(editorState.enterKeyLabel)-1);
-	setInputState(editorState);
-	setInputFocus(true);
-	IMEController::instance()->setClient(this);
-	IMEController::instance()->notifyInputFocusChange(this,true);
+	raiseKeyboardForEdit();
 	//take scene key focus; remember the old holder so type-to-search keeps working
 	// after the edit ends
 	m_qp_prevFocusItem = 0;
@@ -477,6 +469,21 @@ void GroupOverlay::startNameEdit()
 	m_originICS.setY(m_originICS.y() - (qreal)GROUP_OVERLAY_EDIT_SHIFT_UP_PX);
 	applyOpenProgressToIcons();
 	update();
+}
+
+void GroupOverlay::raiseKeyboardForEdit()
+{
+	//FieldType_Search keeps the keyboard in plain key-event mode (no trace/candidate
+	// machinery, see CandidateBar::setEditorState) - keystrokes arrive as QKeyEvents
+	// on the scene focus item, which is this overlay while editing
+	PalmIME::EditorState editorState(PalmIME::FieldType_Search);
+	::strncpy(editorState.enterKeyLabel,"Done",sizeof(editorState.enterKeyLabel)-1);
+	setInputState(editorState);
+	setInputFocus(true);
+	//setClient() only notifies when the client actually changes, so the explicit
+	// notify is what re-opens the keyboard when this panel is already the client
+	IMEController::instance()->setClient(this);
+	IMEController::instance()->notifyInputFocusChange(this,true);
 }
 
 void GroupOverlay::commitNameEdit()
@@ -550,6 +557,19 @@ void GroupOverlay::commitText(const std::string& text)
 void GroupOverlay::performEditorAction(PalmIME::FieldAction action)
 {
 	Q_UNUSED(action);
+	commitNameEdit();
+}
+
+//virtual
+void GroupOverlay::removeInputFocus()
+{
+	//the ime is taking the keyboard away: the vkb's own hide key (SysmgrIMEModel::
+	// requestHide -> IMEController::hideIME), a card claiming the ime, the bluetooth
+	// keyboard appearing. Cards override this hook; this panel has to as well, or the
+	// edit stays open with no keyboard and no way back - tapping the title does nothing
+	// while m_editingName is set - and the panel keeps the scene focus and the keyboard
+	// grab it took for the edit, which is the focus trap the README warns about.
+	InputClient::removeInputFocus();
 	commitNameEdit();
 }
 
@@ -675,6 +695,12 @@ bool GroupOverlay::tapGesture(QTapGesture * tapEvent,QGestureEvent * baseGesture
 		if (!m_titleRect.contains(tapICS))
 		{
 			commitNameEdit();
+		}
+		else
+		{
+			//a tap back on the title asks for the keyboard again: it does nothing while
+			// the keyboard is already up, and gets it back if anything took it away
+			raiseKeyboardForEdit();
 		}
 		return true;
 	}
