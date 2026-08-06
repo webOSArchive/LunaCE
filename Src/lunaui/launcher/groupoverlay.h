@@ -55,6 +55,13 @@ class QPropertyAnimation;
  * Opening and closing are animated by the openProgress property (0 = gone,
  * 1 = fully open): the panel and its member icons scale up out of the group
  * icon that was tapped while the backdrop dim fades in, and reverse on close.
+ *
+ * A pop-out happens while the finger is still down, and it can take the panel
+ * out from under that finger (a two-member group dissolves outright). So from
+ * the moment an icon pops out until the touch is released, the overlay keeps
+ * its (by then invisible) shield up and swallows everything: without that, the
+ * release lands as a tap on whatever the panel was covering - typically the
+ * page icon behind the group, which then launches.
  */
 class GroupOverlay : public ThingPaintable , public InputClient
 {
@@ -107,6 +114,7 @@ Q_SIGNALS:
 protected Q_SLOTS:
 
 	void slotOpenCloseAnimationFinished();
+	void slotInputSwallowSafetyTimeout();
 
 protected:
 
@@ -122,6 +130,10 @@ protected:
 
 	//releases the member icons back to invisible/no-parent state
 	void releaseShownIcons();
+
+	//the finger that popped an icon out is up (or gone): stop swallowing, and let go
+	// of the shield if the panel isn't up any more
+	void endInputSwallow();
 
 	IconBase * memberAtPointICS(const QPointF& pointICS) const;
 
@@ -142,6 +154,7 @@ private:
 
 	bool m_showing;
 	bool m_closing;			//animating out; the group/page pointers are already cleared
+	bool m_ignoreInputUntilRelease;	//an icon popped out; swallow input until the touch ends
 	qreal m_openProgress;
 	QPointer<QPropertyAnimation> m_qp_openCloseAnimation;
 	QPointF m_originICS;

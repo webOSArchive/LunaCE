@@ -34,6 +34,7 @@
 #include <QFocusEvent>
 #include <QPropertyAnimation>
 #include <QEasingCurve>
+#include <QTimer>
 
 #include <cstring>
 #include <glib.h>
@@ -51,6 +52,9 @@
 #define GROUP_OVERLAY_OPEN_ANIM_MS		160
 #define GROUP_OVERLAY_CLOSE_ANIM_MS		130
 #define GROUP_OVERLAY_ANIM_MIN_SCALE	0.85
+//backstop for the post-pop-out input swallow, in case the touch end never arrives:
+// a shield that never lets go would leave the launcher dead to the touch
+#define GROUP_OVERLAY_SWALLOW_SAFETY_MS	5000
 
 GroupOverlay::GroupOverlay(const QRectF& geometry,LauncherObject * p_launcher)
 : ThingPaintable(geometry)
@@ -59,6 +63,7 @@ GroupOverlay::GroupOverlay(const QRectF& geometry,LauncherObject * p_launcher)
 , m_qp_ownerPage(0)
 , m_showing(false)
 , m_closing(false)
+, m_ignoreInputUntilRelease(false)
 , m_openProgress(0.0)
 , m_editingName(false)
 {
@@ -123,6 +128,8 @@ void GroupOverlay::showForGroup(GroupIcon * p_groupIcon,ReorderablePage * p_owne
 	m_qp_ownerPage = p_ownerPage;
 	m_titleText = p_groupIcon->groupName();
 	m_showing = true;
+	//a panel that is up does its own shielding; nothing left to swallow for a past pop-out
+	m_ignoreInputUntilRelease = false;
 	setAcceptTouchEvents(true);
 	relayoutMembers();
 	setVisible(true);
@@ -144,7 +151,12 @@ void GroupOverlay::hideOverlay()
 	m_closing = true;
 	//stop shielding right away: the launcher is the user's again the moment the panel
 	// starts going away, and the member icons are still children until the close finishes
-	setAcceptTouchEvents(false);
+	// ...unless this hide is a pop-out closing the panel under a finger that's still down,
+	// in which case the shield stays until that touch ends (see endInputSwallow)
+	if (!m_ignoreInputUntilRelease)
+	{
+		setAcceptTouchEvents(false);
+	}
 	//callers act on the group/page the moment they ask for the hide, so let go of them now
 	m_qp_groupIcon = 0;
 	m_qp_ownerPage = 0;
@@ -244,8 +256,39 @@ void GroupOverlay::finishClose()
 	m_openProgress = 0.0;
 	releaseShownIcons();
 	m_titleText.clear();
-	setVisible(false);
+	//an invisible item is out of the scene's reach, so a shield that's still waiting on a
+	// touch release stays visible (it paints nothing once the close is done)
+	if (!m_ignoreInputUntilRelease)
+	{
+		setVisible(false);
+	}
 	update();
+}
+
+void GroupOverlay::endInputSwallow()
+{
+	if (!m_ignoreInputUntilRelease)
+	{
+		return;
+	}
+	m_ignoreInputUntilRelease = false;
+	if (m_showing)
+	{
+		//the panel is still up (the group survived the pop-out): it keeps its own shield
+		return;
+	}
+	setAcceptTouchEvents(false);
+	if (!m_closing)
+	{
+		setVisible(false);
+	}
+	update();
+}
+
+//protected Q_SLOTS:
+void GroupOverlay::slotInputSwallowSafetyTimeout()
+{
+	endInputSwallow();
 }
 
 void GroupOverlay::computeAnimationOrigin()
@@ -561,7 +604,7 @@ IconBase * GroupOverlay::memberAtPointICS(const QPointF& pointICS) const
 //virtual
 bool GroupOverlay::sceneEvent(QEvent * event)
 {
-	if (!m_showing)
+	if ((!m_showing) && (!m_ignoreInputUntilRelease))
 	{
 		return QGraphicsObject::sceneEvent(event);
 	}
@@ -575,6 +618,13 @@ bool GroupOverlay::sceneEvent(QEvent * event)
 	}
 	case QEvent::Gesture:
 	{
+		if (m_ignoreInputUntilRelease)
+		{
+			//the finger that popped an icon out is still down: the tap this release makes
+			// belongs to that hold, not to whatever the panel was covering
+			event->accept();
+			return true;
+		}
 		QGestureEvent * ge = static_cast<QGestureEvent*>(event);
 		QGesture * g = ge->gesture(Qt::TapGesture);
 		if (g)
@@ -601,7 +651,12 @@ bool GroupOverlay::sceneEvent(QEvent * event)
 	//swallow all touches so the page below never sees them while the overlay is up
 	case QEvent::TouchBegin:
 	case QEvent::TouchUpdate:
+		event->accept();
+		return true;
 	case QEvent::TouchEnd:
+		//the gesture manager filters events ahead of the scene, so the tap this release
+		// makes has already come and gone by now: safe to let go of the shield here
+		endInputSwallow();
 		event->accept();
 		return true;
 	default:
@@ -652,6 +707,11 @@ bool GroupOverlay::tapAndHoldGesture(QTapAndHoldGesture * tapHoldEvent,QGestureE
 	IconBase * pMemberIcon = memberAtPointICS(tapICS);
 	if (pMemberIcon)
 	{
+		//the pop-out happens with the finger still down, and it can move the panel out from
+		// under it (the panel shrinks, or dissolves outright with the group): swallow input
+		// until that touch ends, so the release can't tap through to what's now underneath
+		m_ignoreInputUntilRelease = true;
+		QTimer::singleShot(GROUP_OVERLAY_SWALLOW_SAFETY_MS,this,SLOT(slotInputSwallowSafetyTimeout()));
 		Q_EMIT signalMemberIconPoppedOut(pMemberIcon);
 	}
 	return true;
