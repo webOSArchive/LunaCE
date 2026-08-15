@@ -23,6 +23,9 @@
 #include "dimensionslauncher.h"
 #include "appmonitor.h"
 #include "webosapp.h"
+#include "stringtranslator.h"
+#include "ApplicationManager.h"
+#include "LaunchPoint.h"
 
 #include <QPainter>
 #include <QImage>
@@ -214,7 +217,24 @@ static QImage memberArtImage(IconBase * p_memberIcon)
 						DimensionsSystemInterface::AppMonitor::appMonitor()->appByUid(appUid));
 		if (pApp)
 		{
-			QImage artImg(pApp->mainIconFilePath());
+			//an auxiliary launch point (e.g. a web shortcut) carries its own icon
+			// art; the app's main icon is the wrong picture for those members
+			QString artPath = pApp->mainIconFilePath();
+			DimensionsSystemInterface::WOAppIconType::Enum iconType =
+					DimensionsSystemInterface::WOAppIconType::INVALID;
+			QString launchPointId = pApp->launchpointIdOfIcon(
+					p_memberIcon->master()->uid(),&iconType);
+			if (iconType == DimensionsSystemInterface::WOAppIconType::Auxiliary)
+			{
+				const LaunchPoint * pLaunchPoint =
+						ApplicationManager::instance()->getLaunchPointById(
+								StringTranslator::outputString(launchPointId));
+				if (pLaunchPoint && !pLaunchPoint->iconPath().empty())
+				{
+					artPath = StringTranslator::inputString(pLaunchPoint->iconPath());
+				}
+			}
+			QImage artImg(artPath);
 			if (!artImg.isNull())
 			{
 				return artImg.convertToFormat(QImage::Format_ARGB32_Premultiplied);

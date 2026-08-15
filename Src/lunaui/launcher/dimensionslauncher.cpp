@@ -431,6 +431,10 @@ void LauncherObject::slotGroupOverlayMemberTapped(IconBase * p_icon)
 	if (pGroupIcon && p_icon && (m_iconShowingFeedback == p_icon))
 	{
 		setAppLaunchFeedback(pGroupIcon);
+		//...but the member stays painted in the panel until the close animation ends,
+		// so re-light it (untracked - the transfer above just switched it off) for a
+		// visible tap flash; GroupOverlay::releaseShownIcons clears it at close-finish
+		p_icon->setLaunchFeedbackVisibility(true);
 	}
 }
 
@@ -526,6 +530,9 @@ void LauncherObject::slotGroupOverlayMemberPoppedOut(IconBase * p_icon)
 
 void LauncherObject::slotGroupOverlayDismissed()
 {
+	//clear the open-tap glow on the group icon; also un-blocks the same-icon
+	// re-tap guard in slotIconActivatedTap so the group can be reopened right away
+	cancelLaunchFeedback();
 	restorePageInteraction();
 }
 
@@ -3374,6 +3381,9 @@ void LauncherObject::slotIconActivatedTap(IconBase* pIcon)
 	GroupIcon * pGroupIcon = qobject_cast<GroupIcon *>(pIcon->master());
 	if (pGroupIcon)
 	{
+		//give the same tap glow an app launch would; the overlay dismiss clears it
+		// (before the member-tap path re-lights it, since signalDismissed fires inside hideOverlay)
+		setAppLaunchFeedback(pIcon);
 		openGroupOverlay(pGroupIcon);
 		return;
 	}

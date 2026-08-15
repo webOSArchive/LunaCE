@@ -82,7 +82,7 @@ QList<IconBase *> WebOSApp::auxAppIcons() const
 QString WebOSApp::launchpointIdOfIcon(const QUuid& iconUid,WOAppIconType::Enum * p_r_type) const
 {
 	IconBase * pIcon = mainAppIcon();
-	if (pIcon->uid() == iconUid)
+	if (pIcon && (pIcon->uid() == iconUid))
 	{
 		if (p_r_type)
 		{

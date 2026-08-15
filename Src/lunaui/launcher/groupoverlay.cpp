@@ -176,6 +176,8 @@ void GroupOverlay::releaseShownIcons()
 		//undo whatever the open/close animation left on the icon
 		(*it)->setOpacity(1.0);
 		(*it)->setScale(1.0);
+		//and the tap flash a member launch leaves on (see slotGroupOverlayMemberTapped)
+		(*it)->setLaunchFeedbackVisibility(false);
 		if ((*it)->parentItem() != this)
 		{
 			//someone took it over while the panel was animating out (see forgetIcon);
