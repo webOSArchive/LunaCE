@@ -230,6 +230,14 @@ bool SystemUiController::isDockShown() const
 
 bool SystemUiController::handleEvent(QEvent *event)
 {
+	// In the minimal UI (first use) none of the gesture targets exist — no
+	// CardWindowManager, OverlayWindowManager or dashboard. WindowServerMinimal
+	// still routes events here, and an edge tap (bottom keyboard row) reaches
+	// CardWindowManager::instance()->deadzoneTap() on a null instance and
+	// crashes LunaSysMgr mid-firstuse. Let every event pass through instead.
+	if (Settings::LunaSettings()->uiType == Settings::UI_MINIMAL)
+		return false;
+
 	switch ((int)event->type()) {
 	case QEvent::KeyPress:
 	case QEvent::KeyRelease:
