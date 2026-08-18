@@ -67,6 +67,8 @@ public:
 	qint32  doneButtonTextVerticalPosAdjust;
 
 	QPoint 	doneButtonPositionAdjust;
+	//gap kept between the last tab and the done button while it's visible
+	quint32	doneButtonReserveClearancePx;
 
 	bool   quickLaunchBarUseAbsoluteSize;
 	QSizeF quickLaunchBarSizePctScreenRelative;

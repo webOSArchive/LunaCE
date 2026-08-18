@@ -653,6 +653,12 @@ protected:
 	UidTranslationMap m_appMapByIconUid;
 	UidTranslationMap m_appMapByAppUid;	//reverse map - only for the main icon. So, app uid -> main icon uid   //TODO: bad naming; rename so it's more clear
 
+	//set when initPages ran with apps present but adopted zero icons (the
+	// recreated-launcher state seen in the cold-boot double-init race). A
+	// launcher in this state must never persist its layout: the empty save
+	// would shadow the good one and blank the launcher on every later boot.
+	bool m_layoutAdoptionFailed;
+
 	QSet<QUuid> m_launchPointInitializationTracker;		///only used on initPages, to keep track of what app/launchpt went to what page, to prevent multiple
 														// assignments when the leftovers get assigned
 														// the set stores launchpoint uids. Right now, these are icon uids of the primary app icon.

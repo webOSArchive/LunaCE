@@ -167,7 +167,10 @@ LauncherObject::LauncherObject(const QRectF& geometry,DimensionsUI * p_mainWindo
 , m_p_pageMovementController(0)
 , m_blockingPageInteractions(false)
 , m_renameDialogCreatingNewPage(false)
+, m_layoutAdoptionFailed(false)
 {
+	g_warning("[LAUNCHER-LIFECYCLE] LauncherObject %p created (primary was %p)",
+			this,(void *)s_qp_primaryInstance);
 
 	if (!s_qp_primaryInstance)
 	{
@@ -604,6 +607,18 @@ quint32 LauncherObject::initPages()
 		for(IconList::Iterator iit = appIcons.begin(); iit != appIcons.end(); iit++) {
 			(*iit)->setUsePrerenderedLabel(true);
 		}
+	}
+
+	//A non-empty app list that yielded zero adoptable icons is the recreated-
+	// launcher state from the cold-boot double-init race (the first instance
+	// still owns every icon). This launcher can render, but its layout is a
+	// lie — mark it so no save from it ever reaches disk.
+	if (!appList.isEmpty() && allIcons.isEmpty())
+	{
+		m_layoutAdoptionFailed = true;
+		g_warning("[LAUNCHER-LIFECYCLE] %s: LauncherObject %p adopted ZERO icons "
+				"from %d apps — layout saves from this instance are now blocked",
+				__FUNCTION__,this,appList.size());
 	}
 
 	//turn the iconList into a set for tracking
@@ -2014,7 +2029,13 @@ QRectF	LauncherObject::areaPageRightSide(Page * pPage) const
 //virtual
 LauncherObject::~LauncherObject()
 {
-	//qDebug() << "IEEEEEEEEEEE!!!!!!!!";
+	//if this fires around boot, it is the cold-boot recreate race: note who died
+	// so the next occurrence in the wild names the killer instead of leaving us
+	// inferring from geometry rectangles (see m_layoutAdoptionFailed)
+	g_warning("[LAUNCHER-LIFECYCLE] LauncherObject %p DESTROYED (was primary: %s, "
+			"icons adopted: %d, adoption failed: %s)",
+			this,(s_qp_primaryInstance == this ? "yes" : "no"),
+			m_appMapByIconUid.size(),(m_layoutAdoptionFailed ? "yes" : "no"));
 }
 
 #include <QPen>
@@ -3539,6 +3560,16 @@ void LauncherObject::activePageEnteredReorderMode()
 	//TODO: FANCY-FU: perhaps a fade in anim
 	m_qp_doneButton->setVisible(true);
 
+	//with a full set of tabs the bar would lay tabs right over the button;
+	// reserve the button's footprint so the tabs compress out from under it
+	if (m_qp_pageTabBar && m_qp_doneButton)
+	{
+		qreal buttonLeft = m_qp_doneButton->mapRectToParent(m_qp_doneButton->geometry()).left();
+		qreal reserve = m_qp_pageTabBar->geometry().right() - buttonLeft
+						+ LayoutSettings::settings()->doneButtonReserveClearancePx;
+		m_qp_pageTabBar->setRightReservedWidth((quint32)DimensionsGlobal::roundUp(qMax((qreal)0.0,reserve)));
+	}
+
 	//TODO: less hardcoded...
 	setProperty("reorder_mode",true);
 
@@ -3552,6 +3583,12 @@ void LauncherObject::activePageExitedReorderMode()
 	//get rid of the done button
 	//TODO: FANCY-FU: perhaps a fade out anim
 	m_qp_doneButton->setVisible(false);
+
+	//give the reserved space at the right end of the bar back to the tabs
+	if (m_qp_pageTabBar)
+	{
+		m_qp_pageTabBar->setRightReservedWidth(0);
+	}
 
 	//TODO: less hardcoded...
 	setProperty("reorder_mode",false);
@@ -4404,6 +4441,17 @@ bool LauncherObject::processNewWebOSApp(DimensionsSystemInterface::WebOSApp * p_
 
 void LauncherObject::saveCurrentLauncherLayouts()
 {
+	//every layout save funnels through here; a launcher that failed icon
+	// adoption at init (cold-boot recreate race) must never persist — even a
+	// later legitimate change (an app install adding one icon) would write its
+	// empty pages over the good save and blank the launcher permanently
+	if (m_layoutAdoptionFailed)
+	{
+		g_warning("[LAUNCHER-LIFECYCLE] %s: REFUSING save from LauncherObject %p "
+				"(init adopted zero icons; the on-disk layout stays authoritative)",
+				__FUNCTION__,this);
+		return;
+	}
 	qDebug() << __FUNCTION__ << ": trying to save Launcher state";
 	DimensionsSystemInterface::PageSaver::saveLauncher(this);
 }

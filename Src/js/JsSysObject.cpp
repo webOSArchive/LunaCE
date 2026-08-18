@@ -2429,7 +2429,13 @@ void JsSysObject::markFirstUseDone()
 		fclose(f);
 
 		g_message("[%s]: DEBUG: emitting first-use-finished", __PRETTY_FUNCTION__);
-		::system("/sbin/initctl emit first-use-finished");
+		// Background the emit: a plain `initctl emit` blocks until upstart
+		// finishes handling the event, and if upstart's spawner hiccups the
+		// reply never comes — leaving first-use wedged one line short of the
+		// exit(0) that restarts the UI (seen live: "Just a Moment" forever
+		// while an upstart fork SIGSEGVed mid-event). The consumer jobs only
+		// need the event delivered, not a synchronous handshake.
+		::system("/sbin/initctl emit first-use-finished > /dev/null 2>&1 &");
 	}
 	g_message("[%s]: DEBUG: leaving markFirstUseDone.", __PRETTY_FUNCTION__);
 }

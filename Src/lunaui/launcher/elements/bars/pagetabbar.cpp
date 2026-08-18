@@ -96,6 +96,7 @@ PageTabBar::PageTabBar(const QRectF& pageTabBarGeometry,LauncherObject * p_belon
 , m_addTabRevealedByThisPress(false)
 , m_qp_addTabIconPmo(0)
 , m_maxTabWidth(150)
+, m_rightReservedWidth(0)
 , m_interactionsBlocked(false)
 , m_qp_currentUIOwner(p_belongsTo)
 , m_qp_backgroundPmo(0)
@@ -199,6 +200,24 @@ void PageTabBar::resizeAllTabs()
 		}
 	}
 	relayoutExistingTabs();
+}
+
+void PageTabBar::setRightReservedWidth(quint32 width)
+{
+	if (width == m_rightReservedWidth)
+	{
+		return;
+	}
+	m_rightReservedWidth = width;
+	if (m_pageTabs.isEmpty())
+	{
+		resetTabSpaces();
+	}
+	else
+	{
+		resizeAllTabs();
+	}
+	update();
 }
 
 QRectF PageTabBar::addTabButtonRect() const
@@ -794,7 +813,9 @@ void PageTabBar::relayoutExistingTabs()
 //virtual
 void PageTabBar::resetTabSpaces()
 {
-	m_unusedTabSpace = m_geom;
+	//the right end of the bar may be reserved (see setRightReservedWidth)
+	qreal reservedWidth = qMin((qreal)m_rightReservedWidth,m_geom.width());
+	m_unusedTabSpace = m_geom.adjusted(0.0,0.0,-reservedWidth,0.0);
 	m_usedTabSpace =  QRectF(m_geom.left(),m_geom.top(),0.0,m_geom.height());
 }
 
@@ -808,7 +829,7 @@ void PageTabBar::recalculateUnusedSpace()
 	}
 	m_unusedTabSpace.setTopLeft(m_usedTabSpace.topRight());
 	m_unusedTabSpace.setHeight(m_usedTabSpace.height());
-	m_unusedTabSpace.setWidth(m_geom.right()-m_usedTabSpace.right());
+	m_unusedTabSpace.setWidth(qMax((qreal)0.0,m_geom.right()-(qreal)m_rightReservedWidth-m_usedTabSpace.right()));
 }
 
 QSize PageTabBar::newTabMaxSize()
@@ -818,7 +839,8 @@ QSize PageTabBar::newTabMaxSize()
 		return QSize(qMin(m_maxTabWidth,(quint32)DimensionsGlobal::roundDown(m_unusedTabSpace.width()))
 					,(quint32)DimensionsGlobal::roundDown(m_unusedTabSpace.height()));
 	}
-	quint32 maxWidthPerTabGeom = (quint32)DimensionsGlobal::roundDown(m_geom.width()/(qreal)(m_pageTabs.size()));
+	qreal widthForTabs = qMax((qreal)2.0,m_geom.width()-(qreal)m_rightReservedWidth);
+	quint32 maxWidthPerTabGeom = (quint32)DimensionsGlobal::roundDown(widthForTabs/(qreal)(m_pageTabs.size()));
 	quint32 maxHeightPerTabGeom = (quint32)DimensionsGlobal::roundDown(m_unusedTabSpace.height());
 	return QSize(qMin((qMin(maxWidthPerTabGeom,m_maxTabWidth)),(quint32)DimensionsGlobal::roundDown(m_unusedTabSpace.width()))
 			,(quint32)DimensionsGlobal::roundDown(m_unusedTabSpace.height()));

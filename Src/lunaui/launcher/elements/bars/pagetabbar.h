@@ -86,6 +86,11 @@ public:
 	virtual void highlightTabForPage(Page * p_page);
 	virtual void unHighlightTabForPage(Page * p_page);
 
+	//keeps tabs (and the add-tab affordance) out of the given number of pixels at
+	// the right end of the bar; the launcher parks its Done button there while a
+	// page is in reorder mode. 0 gives the whole bar back to the tabs
+	void setRightReservedWidth(quint32 width);
+
 Q_SIGNALS:
 
 	void signalTabForPageActivatedTap(Page *);
@@ -187,6 +192,7 @@ private:
 	QRectF  m_unusedTabSpace;
 	QRectF	m_usedTabSpace;
 	quint32 m_maxTabWidth;
+	quint32 m_rightReservedWidth;
 	QString m_pageTabBarUiState;		//container for ui info the owner needs to store here
 
 	bool 	m_interactionsBlocked;

@@ -70,10 +70,12 @@ DimensionsUI::DimensionsUI(quint32 width,quint32 height)
 	if ((width == 0) || (height == 0))
 	{
 		//bail, not ready yet
+		qWarning() << "[LAUNCHER-LIFECYCLE] DimensionsUI ctor: init-only (0,0) flavor; launcher deferred to first resize";
 		return;
 	}
 
 	s_qp_primaryLauncher = new LauncherObject(DimensionsGlobal::realRectAroundRealPoint(QSize(width,height)),this);
+	qWarning() << "[LAUNCHER-LIFECYCLE] DimensionsUI ctor created LauncherObject" << (void *)s_qp_primaryLauncher;
 	//TODO: IMPROVE: just do a full init w/o resize (this was done TEMP: during graft of the LauncherObject/split of the DimensionsUI
 	// object)
 	s_qp_primaryLauncher->resize(width,height);
@@ -86,6 +88,7 @@ DimensionsUI::DimensionsUI(quint32 width,quint32 height)
 //virtual
 DimensionsUI::~DimensionsUI()
 {
+	qWarning() << "[LAUNCHER-LIFECYCLE] ~DimensionsUI deleting LauncherObject" << (void *)s_qp_primaryLauncher;
 	delete s_qp_primaryLauncher;
 }
 
@@ -109,6 +112,10 @@ void DimensionsUI::resize(int w, int h)
 	m_lastResize = QSize(w,h);
 	if (!s_qp_primaryLauncher)
 	{
+		//a null QPointer here means a previous LauncherObject was DELETED out from
+		// under us — the exact precursor of the cold-boot empty-launcher race
+		qWarning() << "[LAUNCHER-LIFECYCLE] DimensionsUI::resize(" << w << "," << h
+				<< ") found launcher pointer NULL — creating a replacement LauncherObject";
 		//TODO: IMPROVE: again, when the launcher is newly created, avoid extra resize
 		s_qp_primaryLauncher = new LauncherObject(DimensionsGlobal::realRectAroundRealPoint(QSize(w,h)),this);
 		s_qp_primaryLauncher->resize(w,h);
@@ -152,6 +159,7 @@ void DimensionsUI::slotLauncherFullyClosed(bool reCreate)
 	{
 		if (reCreate)
 		{
+			qWarning() << "[LAUNCHER-LIFECYCLE] slotLauncherFullyClosed(reCreate=true) — recreating launcher";
 			//remake the launcher object, fully reinitializing it
 			slotReCreateLauncher();
 			s_qp_primaryLauncher->slotLauncherFullyClosed();
@@ -162,6 +170,7 @@ void DimensionsUI::slotLauncherFullyClosed(bool reCreate)
 
 void DimensionsUI::slotDestroyLauncher()
 {
+	qWarning() << "[LAUNCHER-LIFECYCLE] slotDestroyLauncher deleting LauncherObject" << (void *)s_qp_primaryLauncher;
 	delete s_qp_primaryLauncher;
 }
 
@@ -173,6 +182,7 @@ void DimensionsUI::slotCreateLauncher()
 	}
 
 	s_qp_primaryLauncher = new LauncherObject(DimensionsGlobal::realRectAroundRealPoint(m_lastResize),this);
+	qWarning() << "[LAUNCHER-LIFECYCLE] slotCreateLauncher created LauncherObject" << (void *)s_qp_primaryLauncher;
 	//TODO: IMPROVE: just do a full init w/o resize (this was done TEMP: during graft of the LauncherObject/split of the DimensionsUI
 	// object)
 	s_qp_primaryLauncher->resize(m_lastResize.width(),m_lastResize.height());

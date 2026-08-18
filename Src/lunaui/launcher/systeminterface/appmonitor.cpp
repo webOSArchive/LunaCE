@@ -444,9 +444,24 @@ void AppMonitor::loadDesignatorKeywordMapping(const QString& mapFile)
 	{
 		settings.setArrayIndex(i);
 		QString designator = settings.value("designator",QString("")).toString();
-		if (designator.isEmpty()
-			|| (designator == Page::PageDesignatorFavorites()) )
+		if (designator.isEmpty())
 		{
+			continue;
+		}
+		if (designator == Page::PageDesignatorFavorites())
+		{
+			// The favorites page is a launcher built-in: it must never become
+			// an aux designator (addMissingPredefinedDesignatorPages would
+			// try to create/recycle a page for it). But its DISPLAY NAME may
+			// be overridden from the map — favoritesPage creation already
+			// calls pageNameFromDesignator(), which without this entry can
+			// only ever fall back to "FAVORITES". (webOS CE uses this to
+			// name the page "GAMES".)
+			QString name = settings.value("name",QString("")).toString();
+			if (!name.isEmpty())
+			{
+				m_designatorToNameMap[designator] = name;
+			}
 			continue;
 		}
 		if (designatorSet.contains(designator))

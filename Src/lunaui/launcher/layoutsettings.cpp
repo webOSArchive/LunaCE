@@ -78,6 +78,7 @@ LayoutSettings::LayoutSettings()
 , doneButtonFontColor(Qt::white)
 , doneButtonTextVerticalPosAdjust(0)
 , doneButtonPositionAdjust(QPoint(12,0))
+, doneButtonReserveClearancePx(5)
 
 , quickLaunchBarUseAbsoluteSize(true)
 , quickLaunchBarSizePctScreenRelative(QSizeF(1.0,0.15))
@@ -281,6 +282,7 @@ void LayoutSettings::load(const char* settingsFile)
 			"doneButtonHorizontalPositionAdjustPx",
 			"doneButtonVerticalPositionAdjustPx",
 			doneButtonPositionAdjust);
+	KEY_INTEGER("DoneButton","doneButtonReserveClearancePx",doneButtonReserveClearancePx);
 	KEYS_SIZEF("Pages","pageWidthPctLauncherRelative","pageHeightPctLauncherRelative",pageSizePctLauncherRelative);
 	KEY_BOOLEAN("Pages","autoPageSize",autoPageSize);
 
