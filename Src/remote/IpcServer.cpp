@@ -54,6 +54,46 @@
 // the prefix that comes before the appid in all app paths
 const char *APP_PREFIX = "/media/cryptofs/apps/usr/palm/applications/";
 
+// Remembers an environment variable so it can be put back after it has been set
+// for a child's benefit. Restoring on destruction too, so an early return out of
+// a launch cannot leave the launched app's loader settings behind in our own
+// environment for the next child to inherit.
+class EnvVarSaver
+{
+public:
+	EnvVarSaver(const char * name)
+		: m_name(name)
+		, m_restored(false)
+	{
+		const char * value = ::getenv(name);
+		m_wasSet = (value != 0);
+		if (m_wasSet)
+			m_value = value;
+	}
+
+	~EnvVarSaver()
+	{
+		restore();
+	}
+
+	void restore()
+	{
+		if (m_restored)
+			return;
+		m_restored = true;
+		if (m_wasSet)
+			::setenv(m_name, m_value.c_str(), 1);
+		else
+			::unsetenv(m_name);
+	}
+
+private:
+	const char * m_name;
+	std::string m_value;
+	bool m_wasSet;
+	bool m_restored;
+};
+
 
 static int kNukeProcessTimeoutMs = 2000;
 
@@ -215,8 +255,23 @@ int IpcServer::launchNativeProcess(const std::string& appId, const char* path, c
 		newargs[2],newargs[3],newargs[4],newargs[5]);
 	
 	
+	// These are the launched app's loader settings, not ours; they go into our own
+	// environment only because the child inherits it across the fork. So take a copy
+	// of what was here and put it back the moment the child is on its way - whatever
+	// is left set here is inherited by every OTHER process sysmgr spawns from now on.
+	// LD_PRELOAD leaking was the worst of it: libpvrtc.so needs libnapp's symbols,
+	// which only a PDK app links, and sysmgr runs with LD_BIND_NOW=1, so the loader
+	// resolves it eagerly and kills anything else that inherits it - "symbol lookup
+	// error: /usr/lib/libpvrtc.so: undefined symbol: NApp_GetPortabilityValue", exit
+	// 127. After one PDK app launch that was every sh, rm and ipkg sysmgr ran, which
+	// is why removing an app stopped working (FAILED_IPKG_REMOVE) until a restart.
+	EnvVarSaver savedLibraryPath("LD_LIBRARY_PATH");
+	EnvVarSaver savedPreload("LD_PRELOAD");
+	EnvVarSaver savedQpaPlatform("QT_QPA_PLATFORM");
+	EnvVarSaver savedQmlImportPath("QML_IMPORT_PATH");
+
 	// set the lib path value
-    setenv("LD_LIBRARY_PATH", workingPath, 1); 
+    setenv("LD_LIBRARY_PATH", workingPath, 1);
 
     // for PVR texture decompression
     if ( appType != ApplicationDescription::Type_Qt ) {
@@ -230,8 +285,11 @@ int IpcServer::launchNativeProcess(const std::string& appId, const char* path, c
     // fire off the process (jailer will preserve the lib path value in the new environment)
 	pid_t pid = PrvLaunchProcess((char **)newargs);
 
-	// clear the lib path value
-    unsetenv("LD_LIBRARY_PATH"); 
+	// the child has its copy; hand our environment back to whatever comes next
+	savedLibraryPath.restore();
+	savedPreload.restore();
+	savedQpaPlatform.restore();
+	savedQmlImportPath.restore();
 	
 	if (pid < 0) {
 		g_critical("%s:%d failed to fork: %s", __PRETTY_FUNCTION__, __LINE__,
