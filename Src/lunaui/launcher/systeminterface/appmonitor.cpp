@@ -966,7 +966,12 @@ void AppMonitor::slotLaunchPointUpdated(const LaunchPoint* p_launchpoint,QBitArr
 			PixmapObject * pNewIconPixmap = PixmapObjectLoader::instance()->quickLoad(newIconFilename);
 			if (pNewIconPixmap)
 			{
-				pIcon->slotUpdateIconPic(pNewPmo,true,pOldPmo);
+				//pNewIconPixmap, not pNewPmo: pNewPmo is only ever set by the Status
+				// handler above, and if that had set it then installUpdatedIcon would
+				// be true and this branch would not run. So it was always 0 here, and
+				// slotUpdateIconPic() returns early on a null pixmap - the icon that
+				// was just loaded was never shown, and never freed either.
+				pIcon->slotUpdateIconPic(pNewIconPixmap,true,pOldPmo);
 				//TODO: PMO-MANAGE: dispose of the old icon pixmap
 			}
 		}
