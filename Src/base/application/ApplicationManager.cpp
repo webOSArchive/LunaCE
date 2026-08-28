@@ -2539,6 +2539,20 @@ void ApplicationManager::handleApplicationStatusUpdates(LSMessage* msg)
 				statusBits.setBit(LaunchPointUpdatedReason::Progress);
 				Q_EMIT signalLaunchPointUpdated(appDesc->getDefaultLaunchPoint(),statusBits);
 			}
+			else if ((appStatus.state == ApplicationStatus::State_Failed) && !appExists) {
+				// A failure for an app that is neither installed nor mid-install has
+				// nothing to stand for. This is what the tail of a remove looks like:
+				// the app is already out of the registry and its icon is already gone
+				// from the launcher (removePackage -> postLaunchPointChange "removed"),
+				// and then the installer reports the operation failed. Making a pending
+				// app out of that status hands the launcher a launch point with no
+				// title and no icon, which it draws as a nameless "(?)" tile with a
+				// warning badge that nothing can clear short of a luna restart - and
+				// the entry sits in m_pendingApps forever, since nothing will ever
+				// report a completion for it.
+				g_warning("%s [INSTALLER]: failure status for '%s', which is neither installed nor pending - ignoring it rather than creating a pending app for it",
+						  __FUNCTION__, appStatus.id.c_str());
+			}
 			else {
 				appDesc = ApplicationDescription::fromApplicationStatus(appStatus, appExists);
 				if (appDesc) {
