@@ -152,12 +152,17 @@ void OverlayLayer::paint(QPainter *painter, const QStyleOptionGraphicsItem *opti
 {
 	if (m_mode == OverlayLayerMode::Scrim)
 	{
-		QBrush sb = painter->brush();
+		//fillRect(), not drawRect(): drawRect() strokes the rect's outline with the
+		// painter's current pen on top of the fill, and the scene hands each item
+		// whatever pen the item painted before it left set - white, from the icon
+		// labels. That stroke straddles the launcher's edge, and the pixel-center
+		// rule keeps the right and bottom edge pixels while dropping the left and
+		// top ones, which is the white hairline down the right side and along the
+		// bottom of the launcher whenever the app info dialog is up. fillRect()
+		// takes a brush and no pen at all.
 		qreal so = painter->opacity();
-		painter->setBrush(Qt::black);
 		painter->setOpacity(0.65);
-		painter->drawRect(m_geom);
-		painter->setBrush(sb);
+		painter->fillRect(m_geom,Qt::black);
 		painter->setOpacity(so);
 	}
 	else		///TODO: WARNING: change this if there are more modes or INVALID is a likely case that shouldn't paint "normal" mode things
