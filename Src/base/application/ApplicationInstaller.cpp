@@ -578,8 +578,11 @@ static void util_deleteJail(const char* appId)
 	cmdbuf.append("/usr/bin/jailer -D -i ");
 	cmdbuf.append(appId);
 	rc = ::system(cmdbuf.c_str());
-	if (rc < 0) {
-		g_critical("Can't delete jail");
+	//rc < 0 is only the "could not run it at all" case; a jailer that ran and failed,
+	// or a shell that could not start one, comes back as an exit code in the high byte
+	// and used to be reported here as "ok"
+	if (!isNonErrorProcExit(rc)) {
+		g_critical("Can't delete jail: [%s] system() returned %d",cmdbuf.c_str(),rc);
 	}
 	else {
 		g_message("jail delete call ok");
@@ -3364,21 +3367,29 @@ static void util_LSSubReplyWithRelay_IgnoreError(LSHandle* lshandle,const std::s
  * These are not called from anywhere but inside this file 
  */
 static void util_cleanup_tempDir(const std::string& tmpDirPath) {
-	
+
 	std::string cmdline = std::string("rm -fr ")+tmpDirPath;
 
 	int ret = system(cmdline.c_str());
-	Q_UNUSED(ret);
+	//not worth failing the operation over, but not worth hiding either: when these
+	// went wrong silently the only trace was package script dirs piling up under
+	// .scripts, which is a long way from the cause (see the LD_PRELOAD leak that
+	// made every shell sysmgr started exit 127 before running anything)
+	if (!isNonErrorProcExit(ret)) {
+		g_warning("%s: [%s] failed, system() returned %d",__FUNCTION__,cmdline.c_str(),ret);
+	}
 }
 
 /*
  * Be very careful! doesn't check path validity!
  */
 static void util_cleanup_installDir(const std::string& installDirPath) {
-	
+
 	std::string cmdline = std::string("rm -fr ")+installDirPath;
 	int ret = system(cmdline.c_str());
-	Q_UNUSED(ret);
+	if (!isNonErrorProcExit(ret)) {
+		g_warning("%s: [%s] failed, system() returned %d",__FUNCTION__,cmdline.c_str(),ret);
+	}
 }
 
 
