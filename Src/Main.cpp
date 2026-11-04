@@ -72,6 +72,7 @@
 #include <sys/file.h>
 
 #include <QApplication>
+#include "QtEmojiFallback.h"
 #include <QtGui>
 #include <QtGlobal> 
 
@@ -987,6 +988,7 @@ int main( int argc, char** argv)
 
 	qInstallMsgHandler(qtMsgHandler);
 	QApplication app(argc, argv);
+	installQtEmojiFallback();	// [CE] before any text is drawn
 	QApplication::setStartDragDistance(settings->tapRadius);
 	QApplication::setDoubleClickInterval (Settings::LunaSettings()->tapDoubleClickDuration);
 	host->show();

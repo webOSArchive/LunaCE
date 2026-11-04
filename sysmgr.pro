@@ -177,6 +177,7 @@ SOURCES = \
 	BannerMessageHandler.cpp \
 	Logging.cpp \
 	Utils.cpp \
+	QtEmojiFallback.cpp \
 	Main.cpp \
 	JsSysObjectWrapper.cpp \
 	JsSysObject.cpp \
