@@ -1,7 +1,7 @@
 // Generated from webos-doctor-ce packages/ce-emoji/keyboard-emoji.txt - do not edit by hand.
-// The emoji on the keyboard's emoji layer, in key order (EMOJI_PER_PAGE per page). utf8 is what
-// the key types (with U+FE0F where the emoji needs it); image names its OpenMoji PNG in
-// cEmojiImageDir (CC BY-SA 4.0, see ATTRIBUTION.txt there).
+// The emoji on the keyboard's emoji layer, in key order. utf8 is what the key types (with
+// U+FE0F where the emoji needs it); image names its OpenMoji PNG in cEmojiImageDir
+// (CC BY-SA 4.0, see ATTRIBUTION.txt there).
 #ifndef EMOJI_KEYS_H
 #define EMOJI_KEYS_H
 
@@ -63,7 +63,7 @@ static const EmojiKey cEmojiKeys[cEmojiCount] = {
 	{ "\xf0\x9f\x98\xb4", "1F634" },	// 😴
 	{ "\xf0\x9f\xa4\xa4", "1F924" },	// 🤤
 	{ "\xf0\x9f\x98\xb7", "1F637" },	// 😷
-	{ "\xf0\x9f\xa4\x92", "1F912" },	// 🤒
+	{ "\xf0\x9f\x98\xb5", "1F635" },	// 😵
 	{ "\xf0\x9f\xa4\xa2", "1F922" },	// 🤢
 	{ "\xf0\x9f\xa4\xae", "1F92E" },	// 🤮
 	{ "\xf0\x9f\xa5\xb5", "1F975" },	// 🥵
@@ -95,7 +95,7 @@ static const EmojiKey cEmojiKeys[cEmojiCount] = {
 	{ "\xf0\x9f\x92\x99", "1F499" },	// 💙
 	{ "\xf0\x9f\x92\x9c", "1F49C" },	// 💜
 	{ "\xf0\x9f\x96\xa4", "1F5A4" },	// 🖤
-	{ "\xf0\x9f\xa4\x8d", "1F90D" },	// 🤍
+	{ "\xf0\x9f\x92\x97", "1F497" },	// 💗
 	{ "\xf0\x9f\x92\x94", "1F494" },	// 💔
 	{ "\xf0\x9f\x92\x95", "1F495" },	// 💕
 	{ "\xf0\x9f\x92\x96", "1F496" },	// 💖
