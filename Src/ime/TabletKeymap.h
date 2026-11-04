@@ -109,6 +109,12 @@ const UKey cKey_Resize_Last = cKey_Resize_Large;
 const UKey cKey_ToggleSoundFeedback = UKey(0x01200216);
 const UKey cKey_ResizeHandle = UKey(0x01200217);
 const UKey cKey_Trackball = UKey(0x01200218);
+// [CE] emoji layer: the key that took over the language key, and "next page" in emoji mode
+const UKey cKey_EmojiToggle = UKey(0x01200219);
+const UKey cKey_EmojiPage = UKey(0x0120021A);
+// [CE] one UKey per entry of cEmojiKeys (EmojiKeys.h)
+const UKey cKey_Emoji_First = UKey(0x01200600);
+const UKey cKey_Emoji_Last = UKey(0x012006ff);
 
 // Keys that correspond to some text entry (label & entered text are equal)
 const UKey cKey_DotCom = UKey(0x01200300);
@@ -144,6 +150,7 @@ inline bool UKeyIsFunctionKey(UKey ukey)		{ return ukey >= Qt::Key_Escape; }
 inline bool UKeyIsTextShortcutKey(UKey ukey)	{ return ukey >= 0x01200300 && ukey <= 0x012003FF; }
 inline bool UKeyIsKeyboardComboKey(UKey ukey)	{ return ukey >= cKey_KeyboardComboChoice_First && ukey <= cKey_KeyboardComboChoice_Last;}
 inline bool UKeyIsKeyboardSizeKey(UKey ukey)	{ return ukey >= cKey_Resize_First && ukey <= cKey_Resize_Last;}
+inline bool UKeyIsEmojiKey(UKey ukey)			{ return ukey >= cKey_Emoji_First && ukey <= cKey_Emoji_Last; }
 inline bool UKeyIsEmoticonKey(UKey ukey)		{ return ukey >= cKey_Emoticon_Frown && ukey <= cKey_Emoticon_Heart; }
 inline bool UKeyIsCharacter(UKey ukey)          { return (ukey >= Qt::Key_A && ukey <= Qt::Key_Z) // A-Z
                                                          || (ukey >= UKey(0x0410) && ukey <= UKey(0x42F)) || ukey == UKey(0x0401) // Russian keys
@@ -305,6 +312,15 @@ public:
 	const PalmIME::EditorState &	editorState() const			{ return m_editorState; }
 	bool				setAutoCap(bool autoCap);
 
+	// [CE] emoji layer: the character keys of the top four rows type emoji, a page at a time
+	bool				setEmojiMode(bool emojiMode);
+	bool				emojiMode() const						{ return m_emojiMode; }
+	void				nextEmojiPage();
+	int					emojiPageCount();
+	static int			emojiIndex(UKey key)					{ return UKeyIsEmojiKey(key) ? int(key - cKey_Emoji_First) : -1; }
+	static QString		emojiText(UKey key);					// what an emoji key types (UTF-8 decoded)
+	static const char *	emojiImage(UKey key);					// its OpenMoji file name, without directory or .png
+
 	bool				isSymbolActive() const					{ return ((m_symbolMode == eSymbolMode_Lock) ? 1 : 0) + (m_symbolDown ? 1 : 0) == 1; }
 	bool				isShiftActive() const					{ return ((m_shiftMode == eShiftMode_Once) ? 1 : 0) + (m_shiftDown ? 1 : 0) == 1; }
 	bool				isShiftDown() const						{ return m_shiftDown; }
@@ -354,6 +370,12 @@ private:
 	bool				m_symbolDown;
 	bool				m_autoCap;
 	bool				m_numLock;							// in number & phone fields, when numbers need shift.
+	bool				m_emojiMode;
+	int					m_emojiPage;
+	int					m_emojiSlot[cKeymapRows][cKeymapColumns];	// slot of each key on an emoji page, -1 if none
+	int					m_emojiSlotCount;					// emoji per page with the current keymap
+	const Keymap *		m_emojiSlotsFor;					// the keymap m_emojiSlot was computed for
+	void				updateEmojiSlots();
 	PalmIME::EditorState m_editorState;
 	LayoutFamily *      m_layoutFamily;
 	ELayoutPage			m_layoutPage;

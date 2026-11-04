@@ -19,6 +19,7 @@
 
 
 #include "TabletKeyboard.h"
+#include "EmojiKeys.h"
 
 #include "KeyLocationRecorder.h"
 #include "PalmIMEHelpers.h"
@@ -314,6 +315,7 @@ void TabletKeyboard::visibleChanged(const bool & visible)
 	{
 		m_keymap.setSymbolMode(TabletKeymap::eSymbolMode_Off);
 		m_keymap.setShiftMode(TabletKeymap::eShiftMode_Off);
+		m_keymap.setEmojiMode(false);
 		clearExtendedkeys();
 	}
 }
@@ -801,6 +803,26 @@ void TabletKeyboard::handleKey(UKey key, QPointF where)
 		commit = true;
 		qtkey = key;
 	}
+	else if (UKeyIsEmojiKey(key))
+	{	// [CE] the emoji layer: type the emoji (UTF-8, astral and sequences included)
+		m_candidateBar.commit();
+		m_IMEDataInterface->commitText(TabletKeymap::emojiText(key).toUtf8().data());
+		m_shortcutsHandler.resetEditor();
+		sendKey = false;
+	}
+	else if (key == cKey_EmojiToggle || key == cKey_EmojiPage)
+	{
+		if (key == cKey_EmojiToggle)
+		{
+			m_keymap.setEmojiMode(!m_keymap.emojiMode());
+			symbolMode = TabletKeymap::eSymbolMode_Off;
+			shiftMode = TabletKeymap::eShiftMode_Off;
+		}
+		else
+			m_keymap.nextEmojiPage();
+		sendKey = false;
+		triggerRepaint();
+	}
 	else if (UKeyIsKeyboardComboKey(key))
 	{
 		QString keymap = m_keymap.getKeyDisplayString(key, false);
@@ -822,6 +844,8 @@ void TabletKeyboard::handleKey(UKey key, QPointF where)
 			qtkey = Qt::Key_Control;
 			break;
 		case cKey_Symbol:
+			if (m_keymap.setEmojiMode(false))	// [CE] symbols leave the emoji layer
+				triggerRepaint();
 			if (m_extendedKeys)
 				clearExtendedkeys();
 			else if (m_keymap.symbolMode() == TabletKeymap::eSymbolMode_Lock)
@@ -1264,7 +1288,7 @@ void TabletKeyboard::paint(QPainter & painter)
 			int count = m_keymap.keyboardToKeyZone(keyCoord, r);
 			if (count > 0 && key != cKey_None)
 			{
-				if (key == Qt::Key_Shift)
+				if (key == Qt::Key_Shift || key == cKey_EmojiPage)	// [CE] the page key sits on shift
 					drawKeyBackground(painter, r, keyCoord, key, false, count);
 				if (key != cKey_Trackball)
 					drawKeyCap(&painter, renderer, r, keyCoord, key, false);
@@ -1450,7 +1474,7 @@ bool TabletKeyboard::updateBackground()
 				{
 					QPoint	keyCoord(x, y);
 					UKey key = m_keymap.map(x, y);
-					if (key != Qt::Key_Shift)
+					if (key != Qt::Key_Shift && key != cKey_EmojiPage)
 					{
 						QRect r;
 						int count = m_keymap.keyboardToKeyZone(keyCoord, r);
@@ -1520,6 +1544,22 @@ void TabletKeyboard::drawKeyCap(QPainter * painter, GlyphRenderer<GlyphSpec> & r
 	QColor		altCharColor_back = cDisabledColor_back;
 	bool		capitalize = m_keymap.isCapOrAutoCapActive();
 //	bool		capitalize = key >= Qt::Key_A && key <= Qt::Key_Z;
+	const char * emojiImage = UKeyIsEmojiKey(key) ? TabletKeymap::emojiImage(key)
+							: (key == cKey_EmojiToggle && !m_keymap.emojiMode()) ? "1F600" : NULL;
+	if (emojiImage)
+	{	// [CE] emoji are drawn from OpenMoji images: the system UI has no emoji font
+		int size = qMin(location.width(), location.height()) * 3 / 4;
+		const QPixmap & pix = emojiPixmap(emojiImage, size);
+		if (painter && !pix.isNull())
+		{
+			painter->drawPixmap(location.left() + (location.width() - pix.width()) / 2,
+								location.top() + (location.height() - pix.height()) / 2, pix);
+			return;
+		}
+		if (!pix.isNull())
+			return;
+		// image missing: fall through and draw the text (boxes, at worst)
+	}
 	if (key == Qt::Key_Space)
 		text = m_candidateBar.autoSelectCandidate();
 	else if (UKeyIsUnicodeQtKey(key))
@@ -1953,6 +1993,24 @@ bool TabletKeyboard::idle()
 #endif
 
 	return false;
+}
+
+
+// [CE] ---------------------------------------------------------------- emoji images
+
+const QPixmap & TabletKeyboard::emojiPixmap(const char * image, int size)
+{
+	QString cacheKey = QString("%1@%2").arg(image).arg(size);
+	QHash<QString, QPixmap>::const_iterator it = m_emojiPixmaps.constFind(cacheKey);
+	if (it != m_emojiPixmaps.constEnd())
+		return it.value();
+	QPixmap pix;
+	QImage img(QString(cEmojiImageDir) + image + ".png");
+	if (!img.isNull() && size > 0)
+		pix = QPixmap::fromImage(img.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+	else
+		g_warning("TabletKeyboard: no emoji image %s%s.png", cEmojiImageDir, image);
+	return m_emojiPixmaps.insert(cacheKey, pix).value();
 }
 
 }; // namespace Tablet_Keyboard

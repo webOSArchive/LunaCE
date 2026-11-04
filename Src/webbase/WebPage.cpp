@@ -1000,8 +1000,22 @@ void WebPage::commitComposingText()
 
 void WebPage::commitText(const char* text)
 {
-	if (m_webView)
-		m_webView->insertStringAsKeyEvents(text);
+	if (!m_webView || !text)
+		return;
+	// [CE] insertStringAsKeyEvents makes one key event per character and drops anything above
+	// U+FFFF (an emoji such as 😀 arrives as nothing, seen on a TouchPad). Text with a 4-byte
+	// UTF-8 sequence goes in through the composition path instead, which hands WebKit's editor
+	// the whole string. Everything else keeps the key-event path it always had.
+	for (const unsigned char* p = (const unsigned char*) text; *p; ++p)
+	{
+		if ((*p & 0xF8) == 0xF0)
+		{
+			m_webView->setComposingText(text);
+			m_webView->commitComposingText();
+			return;
+		}
+	}
+	m_webView->insertStringAsKeyEvents(text);
 }
 
 void WebPage::performEditorAction(PalmIME::FieldAction action)

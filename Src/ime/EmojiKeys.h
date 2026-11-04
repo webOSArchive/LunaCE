@@ -1,0 +1,171 @@
+// Generated from webos-doctor-ce packages/ce-emoji/keyboard-emoji.txt - do not edit by hand.
+// The emoji on the keyboard's emoji layer, in key order (EMOJI_PER_PAGE per page). utf8 is what
+// the key types (with U+FE0F where the emoji needs it); image names its OpenMoji PNG in
+// cEmojiImageDir (CC BY-SA 4.0, see ATTRIBUTION.txt there).
+#ifndef EMOJI_KEYS_H
+#define EMOJI_KEYS_H
+
+namespace Tablet_Keyboard {
+
+struct EmojiKey { const char * utf8; const char * image; };
+
+static const char cEmojiImageDir[] = "/usr/palm/frameworks/ce-emoji/images/72/";
+static const int cEmojiCount = 152;
+static const EmojiKey cEmojiKeys[cEmojiCount] = {
+	{ "\xf0\x9f\x98\x80", "1F600" },	// 😀
+	{ "\xf0\x9f\x98\x83", "1F603" },	// 😃
+	{ "\xf0\x9f\x98\x84", "1F604" },	// 😄
+	{ "\xf0\x9f\x98\x81", "1F601" },	// 😁
+	{ "\xf0\x9f\x98\x86", "1F606" },	// 😆
+	{ "\xf0\x9f\x98\x85", "1F605" },	// 😅
+	{ "\xf0\x9f\x98\x82", "1F602" },	// 😂
+	{ "\xf0\x9f\xa4\xa3", "1F923" },	// 🤣
+	{ "\xf0\x9f\x98\x8a", "1F60A" },	// 😊
+	{ "\xf0\x9f\x99\x82", "1F642" },	// 🙂
+	{ "\xf0\x9f\x98\x89", "1F609" },	// 😉
+	{ "\xf0\x9f\x98\x8d", "1F60D" },	// 😍
+	{ "\xf0\x9f\xa5\xb0", "1F970" },	// 🥰
+	{ "\xf0\x9f\x98\x98", "1F618" },	// 😘
+	{ "\xf0\x9f\x98\x8b", "1F60B" },	// 😋
+	{ "\xf0\x9f\x98\x9c", "1F61C" },	// 😜
+	{ "\xf0\x9f\xa4\xaa", "1F92A" },	// 🤪
+	{ "\xf0\x9f\x98\x8e", "1F60E" },	// 😎
+	{ "\xf0\x9f\xa4\xa9", "1F929" },	// 🤩
+	{ "\xf0\x9f\xa5\xb3", "1F973" },	// 🥳
+	{ "\xf0\x9f\x98\x8f", "1F60F" },	// 😏
+	{ "\xf0\x9f\x98\x92", "1F612" },	// 😒
+	{ "\xf0\x9f\x98\x9e", "1F61E" },	// 😞
+	{ "\xf0\x9f\x98\x94", "1F614" },	// 😔
+	{ "\xf0\x9f\x98\x9f", "1F61F" },	// 😟
+	{ "\xf0\x9f\x98\x95", "1F615" },	// 😕
+	{ "\xf0\x9f\x99\x81", "1F641" },	// 🙁
+	{ "\xf0\x9f\x98\xa3", "1F623" },	// 😣
+	{ "\xf0\x9f\x98\xab", "1F62B" },	// 😫
+	{ "\xf0\x9f\x98\xa9", "1F629" },	// 😩
+	{ "\xf0\x9f\xa5\xba", "1F97A" },	// 🥺
+	{ "\xf0\x9f\x98\xa2", "1F622" },	// 😢
+	{ "\xf0\x9f\x98\xad", "1F62D" },	// 😭
+	{ "\xf0\x9f\x98\xa4", "1F624" },	// 😤
+	{ "\xf0\x9f\x98\xa0", "1F620" },	// 😠
+	{ "\xf0\x9f\x98\xa1", "1F621" },	// 😡
+	{ "\xf0\x9f\xa4\xaf", "1F92F" },	// 🤯
+	{ "\xf0\x9f\x98\xb3", "1F633" },	// 😳
+	{ "\xf0\x9f\x98\xb1", "1F631" },	// 😱
+	{ "\xf0\x9f\x98\xa8", "1F628" },	// 😨
+	{ "\xf0\x9f\x98\xb0", "1F630" },	// 😰
+	{ "\xf0\x9f\x98\xa5", "1F625" },	// 😥
+	{ "\xf0\x9f\xa4\x97", "1F917" },	// 🤗
+	{ "\xf0\x9f\xa4\x94", "1F914" },	// 🤔
+	{ "\xf0\x9f\xa4\xad", "1F92D" },	// 🤭
+	{ "\xf0\x9f\xa4\xab", "1F92B" },	// 🤫
+	{ "\xf0\x9f\x99\x84", "1F644" },	// 🙄
+	{ "\xf0\x9f\x98\xac", "1F62C" },	// 😬
+	{ "\xf0\x9f\x98\xb4", "1F634" },	// 😴
+	{ "\xf0\x9f\xa4\xa4", "1F924" },	// 🤤
+	{ "\xf0\x9f\x98\xb7", "1F637" },	// 😷
+	{ "\xf0\x9f\xa4\x92", "1F912" },	// 🤒
+	{ "\xf0\x9f\xa4\xa2", "1F922" },	// 🤢
+	{ "\xf0\x9f\xa4\xae", "1F92E" },	// 🤮
+	{ "\xf0\x9f\xa5\xb5", "1F975" },	// 🥵
+	{ "\xf0\x9f\xa5\xb6", "1F976" },	// 🥶
+	{ "\xf0\x9f\x98\x87", "1F607" },	// 😇
+	{ "\xf0\x9f\xa4\xa0", "1F920" },	// 🤠
+	{ "\xf0\x9f\xa4\x93", "1F913" },	// 🤓
+	{ "\xf0\x9f\x98\x88", "1F608" },	// 😈
+	{ "\xf0\x9f\x92\xa9", "1F4A9" },	// 💩
+	{ "\xf0\x9f\x91\xbb", "1F47B" },	// 👻
+	{ "\xf0\x9f\x91\x8d", "1F44D" },	// 👍
+	{ "\xf0\x9f\x91\x8e", "1F44E" },	// 👎
+	{ "\xf0\x9f\x91\x8c", "1F44C" },	// 👌
+	{ "\xe2\x9c\x8c\xef\xb8\x8f", "270C" },	// ✌️
+	{ "\xf0\x9f\xa4\x9e", "1F91E" },	// 🤞
+	{ "\xf0\x9f\x91\x8f", "1F44F" },	// 👏
+	{ "\xf0\x9f\x99\x8c", "1F64C" },	// 🙌
+	{ "\xf0\x9f\x99\x8f", "1F64F" },	// 🙏
+	{ "\xf0\x9f\x92\xaa", "1F4AA" },	// 💪
+	{ "\xf0\x9f\x91\x8b", "1F44B" },	// 👋
+	{ "\xf0\x9f\xa4\x9d", "1F91D" },	// 🤝
+	{ "\xf0\x9f\x91\x80", "1F440" },	// 👀
+	{ "\xf0\x9f\xa4\xb7", "1F937" },	// 🤷
+	{ "\xf0\x9f\xa4\xa6", "1F926" },	// 🤦
+	{ "\xe2\x9d\xa4\xef\xb8\x8f", "2764" },	// ❤️
+	{ "\xf0\x9f\xa7\xa1", "1F9E1" },	// 🧡
+	{ "\xf0\x9f\x92\x9b", "1F49B" },	// 💛
+	{ "\xf0\x9f\x92\x9a", "1F49A" },	// 💚
+	{ "\xf0\x9f\x92\x99", "1F499" },	// 💙
+	{ "\xf0\x9f\x92\x9c", "1F49C" },	// 💜
+	{ "\xf0\x9f\x96\xa4", "1F5A4" },	// 🖤
+	{ "\xf0\x9f\xa4\x8d", "1F90D" },	// 🤍
+	{ "\xf0\x9f\x92\x94", "1F494" },	// 💔
+	{ "\xf0\x9f\x92\x95", "1F495" },	// 💕
+	{ "\xf0\x9f\x92\x96", "1F496" },	// 💖
+	{ "\xf0\x9f\x92\xaf", "1F4AF" },	// 💯
+	{ "\xe2\x9c\xa8", "2728" },	// ✨
+	{ "\xf0\x9f\x94\xa5", "1F525" },	// 🔥
+	{ "\xe2\xad\x90", "2B50" },	// ⭐
+	{ "\xf0\x9f\x8c\x9f", "1F31F" },	// 🌟
+	{ "\xe2\x9a\xa1", "26A1" },	// ⚡
+	{ "\xf0\x9f\x92\xa5", "1F4A5" },	// 💥
+	{ "\xf0\x9f\x8e\x89", "1F389" },	// 🎉
+	{ "\xf0\x9f\x8e\x8a", "1F38A" },	// 🎊
+	{ "\xf0\x9f\x8e\x88", "1F388" },	// 🎈
+	{ "\xf0\x9f\x8e\x81", "1F381" },	// 🎁
+	{ "\xf0\x9f\x8e\x82", "1F382" },	// 🎂
+	{ "\xf0\x9f\x8f\x86", "1F3C6" },	// 🏆
+	{ "\xe2\x9c\x85", "2705" },	// ✅
+	{ "\xe2\x9d\x8c", "274C" },	// ❌
+	{ "\xe2\x9d\x97", "2757" },	// ❗
+	{ "\xe2\x9d\x93", "2753" },	// ❓
+	{ "\xf0\x9f\x92\xa4", "1F4A4" },	// 💤
+	{ "\xf0\x9f\x92\xac", "1F4AC" },	// 💬
+	{ "\xf0\x9f\x91\x91", "1F451" },	// 👑
+	{ "\xf0\x9f\x92\x8e", "1F48E" },	// 💎
+	{ "\xf0\x9f\x8c\x88", "1F308" },	// 🌈
+	{ "\xe2\x98\x80\xef\xb8\x8f", "2600" },	// ☀️
+	{ "\xf0\x9f\x8c\x99", "1F319" },	// 🌙
+	{ "\xe2\x98\x81\xef\xb8\x8f", "2601" },	// ☁️
+	{ "\xe2\x9d\x84\xef\xb8\x8f", "2744" },	// ❄️
+	{ "\xf0\x9f\x8c\xa7\xef\xb8\x8f", "1F327" },	// 🌧️
+	{ "\xe2\x98\x95", "2615" },	// ☕
+	{ "\xf0\x9f\x8d\xba", "1F37A" },	// 🍺
+	{ "\xf0\x9f\x8d\xb7", "1F377" },	// 🍷
+	{ "\xf0\x9f\x8d\x95", "1F355" },	// 🍕
+	{ "\xf0\x9f\x8d\x94", "1F354" },	// 🍔
+	{ "\xf0\x9f\x8d\x9f", "1F35F" },	// 🍟
+	{ "\xf0\x9f\x8c\xae", "1F32E" },	// 🌮
+	{ "\xf0\x9f\x8d\xa3", "1F363" },	// 🍣
+	{ "\xf0\x9f\x8d\xa9", "1F369" },	// 🍩
+	{ "\xf0\x9f\x8d\xaa", "1F36A" },	// 🍪
+	{ "\xf0\x9f\x8d\x8e", "1F34E" },	// 🍎
+	{ "\xf0\x9f\x8d\x8c", "1F34C" },	// 🍌
+	{ "\xf0\x9f\x90\xb6", "1F436" },	// 🐶
+	{ "\xf0\x9f\x90\xb1", "1F431" },	// 🐱
+	{ "\xf0\x9f\x90\xbb", "1F43B" },	// 🐻
+	{ "\xf0\x9f\x90\xbc", "1F43C" },	// 🐼
+	{ "\xf0\x9f\xa6\x8a", "1F98A" },	// 🦊
+	{ "\xf0\x9f\x90\xb8", "1F438" },	// 🐸
+	{ "\xf0\x9f\x90\xb5", "1F435" },	// 🐵
+	{ "\xf0\x9f\xa6\x84", "1F984" },	// 🦄
+	{ "\xf0\x9f\x90\x9d", "1F41D" },	// 🐝
+	{ "\xf0\x9f\x8c\xb8", "1F338" },	// 🌸
+	{ "\xf0\x9f\x8c\xb9", "1F339" },	// 🌹
+	{ "\xf0\x9f\x8c\xbb", "1F33B" },	// 🌻
+	{ "\xf0\x9f\x8c\xb2", "1F332" },	// 🌲
+	{ "\xf0\x9f\x8d\x80", "1F340" },	// 🍀
+	{ "\xf0\x9f\x9a\x97", "1F697" },	// 🚗
+	{ "\xe2\x9c\x88\xef\xb8\x8f", "2708" },	// ✈️
+	{ "\xf0\x9f\x9a\x80", "1F680" },	// 🚀
+	{ "\xf0\x9f\x8f\xa0", "1F3E0" },	// 🏠
+	{ "\xf0\x9f\x93\xb1", "1F4F1" },	// 📱
+	{ "\xf0\x9f\x92\xbb", "1F4BB" },	// 💻
+	{ "\xf0\x9f\x93\xb7", "1F4F7" },	// 📷
+	{ "\xf0\x9f\x8e\xb5", "1F3B5" },	// 🎵
+	{ "\xf0\x9f\x8e\xae", "1F3AE" },	// 🎮
+	{ "\xe2\x9a\xbd", "26BD" },	// ⚽
+	{ "\xf0\x9f\x93\x9a", "1F4DA" },	// 📚
+	{ "\xf0\x9f\x92\xa1", "1F4A1" },	// 💡
+};
+
+}; // namespace Tablet_Keyboard
+
+#endif // EMOJI_KEYS_H

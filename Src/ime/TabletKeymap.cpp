@@ -19,6 +19,7 @@
 
 
 #include "TabletKeymap.h"
+#include "EmojiKeys.h"
 
 #include "KeyLocationRecorder.h"
 #include "Localization.h"
@@ -106,6 +107,11 @@ TabletKeymap::Keymap::Keymap(LayoutFamily * layoutFamily, const char * name, uin
 TabletKeymap::TabletKeymap() : m_shiftMode(TabletKeymap::eShiftMode_Off), m_symbolMode(eSymbolMode_Off), m_shiftDown(false), m_symbolDown(false), m_autoCap(false), m_numLock(false),
 	m_layoutFamily(&sLayoutEnglish), m_layoutPage(eLayoutPage_plain), m_limitsDirty(true), m_limitsVersion(0)
 {
+	m_emojiMode = false;
+	m_emojiPage = 0;
+	m_emojiSlotCount = 0;
+	m_emojiSlotsFor = NULL;
+	m_hasMoreThanOneLayoutFamily = false;
 	for (int r = 0; r < cKeymapRows; ++r)
 		m_rowHeight[r] = 1;
 }
@@ -135,7 +141,10 @@ const char * TabletKeymap::getLayoutDefaultLanguage(const char * layoutName)
 
 void TabletKeymap::setHasMoreThanOneLayoutFamily(bool has)
 {
+	if (m_hasMoreThanOneLayoutFamily == has)
+		return;
 	m_hasMoreThanOneLayoutFamily = has;
+	keyboardCombosChanged();	// [CE] the emoji key's pop-up lists "next language" only when there is one
 }
 
 void TabletKeymap::setRowHeight(int rowIndex, int height)
@@ -202,9 +211,12 @@ void TabletKeymap::keyboardCombosChanged()
 		k++;
 	}
 	if (k==1) // if only one keymap, do not display keymaps list
-		sLanguageChoices_Extended[k-1] = cKey_None;
-	else
-		sLanguageChoices_Extended[k] = cKey_None;
+		k = 0;
+	// [CE] the emoji key took over the language key: switching language moved into its pop-up
+	if (m_hasMoreThanOneLayoutFamily)
+		sLanguageChoices_Extended[k++] = cKey_ToggleLanguage;
+	sLanguageChoices_Extended[k] = cKey_None;
+	updateLanguageKey();		// [CE] the key's pop-up exists only when the list isn't empty
 }
 
 inline float fabs(float f) { return f >= 0.f ? f : -f; }
@@ -220,17 +232,11 @@ bool TabletKeymap::updateLanguageKey(LayoutRow * bottomRow)
 	int languageWeightBefore = language.m_weight;
 	
 	m_languageName = getLanguageDisplayName(m_layoutFamily);
-	
-	if (!m_languageName.isEmpty())
-	{
-		symbol.m_weight = 1;
-		language.set(cKey_ToggleLanguage, 1, sLanguageChoices_Extended);
-	}
-	else
-	{
-		symbol.m_weight = 2;
-		language.hide();
-	}
+
+	// [CE] the language key is the emoji key now (where older webOS had it): tap for the emoji
+	// layer; hold for this language's layouts and, with several languages, the next language
+	symbol.m_weight = 1;
+	language.set(cKey_EmojiToggle, 1, sLanguageChoices_Extended[0] != cKey_None ? sLanguageChoices_Extended : NULL);
 	if (symbolWeightBefore != symbol.m_weight || languageWeightBefore != language.m_weight)
 		return true;
 	return false;
@@ -441,6 +447,19 @@ UKey TabletKeymap::map(int x, int y)
 		return cKey_None;
 	const WKey & wkey = m_layoutFamily->m_currentKeymap->wkey(x, y);
 	UKey key = wkey.m_key;
+	if (m_emojiMode)
+	{	// [CE] character keys type emoji; shift turns the page; everything else as usual
+		updateEmojiSlots();
+		int slot = m_emojiSlot[y][x];
+		if (slot >= 0)
+		{
+			int index = m_emojiPage * m_emojiSlotCount + slot;
+			return index < cEmojiCount ? UKey(cKey_Emoji_First + index) : cKey_None;
+		}
+		if (key == Qt::Key_Shift)
+			return cKey_EmojiPage;
+		return key;
+	}
 	if ((m_numLock || (m_layoutFamily->m_currentKeymap->m_needNumLock && m_shiftMode == eShiftMode_CapsLock)) && wkey.m_altkey >= Qt::Key_0 && wkey.m_altkey <= Qt::Key_9)
 	{
 		if (!isShiftActive())
@@ -809,6 +828,12 @@ const UKey * TabletKeymap::getExtendedChars(QPoint keyboardCoordinate)
 	if (isValidLocation(keyboardCoordinate))
 	{
 		const WKey & wkey = m_layoutFamily->m_currentKeymap->wkey(keyboardCoordinate.x(), keyboardCoordinate.y());
+		if (m_emojiMode && keyboardCoordinate.y() < cKeymapRows - 1)
+		{	// [CE] no accent pop-ups over emoji keys
+			updateEmojiSlots();
+			if (m_emojiSlot[keyboardCoordinate.y()][keyboardCoordinate.x()] >= 0 || wkey.m_key == Qt::Key_Shift)
+				return NULL;
+		}
 		if (wkey.m_key < Qt::Key_A || wkey.m_key > Qt::Key_Z || !isSymbolActive())
 			return wkey.m_extended;
 	}
@@ -832,6 +857,8 @@ TabletKeymap::ETabAction TabletKeymap::tabAction() const
 
 QString TabletKeymap::getKeyDisplayString(UKey key, bool logging)
 {
+	if (UKeyIsEmojiKey(key))
+		return emojiText(key);
 	if (UKeyIsFunctionKey(key))
 	{
 		if (UKeyIsKeyboardComboKey(key))
@@ -863,6 +890,8 @@ QString TabletKeymap::getKeyDisplayString(UKey key, bool logging)
 			default:									return m_localized__Tab;
 			}
 		}
+		case cKey_EmojiToggle:							return m_emojiMode ? "ABC" : (logging ? "<Emoji>" : "");
+		case cKey_EmojiPage:							return QString("%1/%2").arg(m_emojiPage + 1).arg(emojiPageCount());
 		case cKey_Resize_Tiny:							return logging ? "<XS>" : "XS";
 		case cKey_Resize_Small:							return logging ? "<S>" : "S";
 		case cKey_Resize_Default:						return logging ? "<M>" : "M";
@@ -918,6 +947,72 @@ QString TabletKeymap::getKeyDisplayString(UKey key, bool logging)
 		}
 	}
 	return isCapOrAutoCapActive() ? QChar(key).toUpper() : QChar(key).toLower();
+}
+
+
+// [CE] ---------------------------------------------------------------- emoji layer
+
+// Which keys type emoji: every character key of the top four rows (numbers, letters, the
+// punctuation beside them), numbered in reading order. A key's invisible extension (negative
+// weight, e.g. the half key left of A) shares its key's slot.
+void TabletKeymap::updateEmojiSlots()
+{
+	const Keymap * keymap = m_layoutFamily->m_currentKeymap;
+	if (m_emojiSlotsFor == keymap)
+		return;
+	m_emojiSlotsFor = keymap;
+	m_emojiSlotCount = 0;
+	for (int y = 0; y < cKeymapRows; ++y)
+		for (int x = 0; x < cKeymapColumns; ++x)
+			m_emojiSlot[y][x] = -1;
+	for (int y = 0; y < cKeymapRows - 1; ++y)
+		for (int x = 0; x < cKeymapColumns; ++x)
+		{
+			const WKey & wkey = keymap->wkey(x, y);
+			if (wkey.m_weight > 0 && wkey.m_key != cKey_None && (UKeyIsUnicodeQtKey(wkey.m_key) || UKeyIsTextShortcutKey(wkey.m_key)))
+				m_emojiSlot[y][x] = m_emojiSlotCount++;
+		}
+	for (int y = 0; y < cKeymapRows - 1; ++y)
+		for (int x = 0; x < cKeymapColumns; ++x)
+		{
+			const WKey & wkey = keymap->wkey(x, y);
+			if (wkey.m_weight < 0)
+				for (int n = x - 1; n <= x + 1; n += 2)
+					if (isValidLocation(n, y) && m_emojiSlot[y][n] >= 0 && keymap->wkey(n, y).m_key == wkey.m_key)
+						m_emojiSlot[y][x] = m_emojiSlot[y][n];
+		}
+}
+
+int TabletKeymap::emojiPageCount()
+{
+	updateEmojiSlots();
+	return m_emojiSlotCount > 0 ? (cEmojiCount + m_emojiSlotCount - 1) / m_emojiSlotCount : 1;
+}
+
+bool TabletKeymap::setEmojiMode(bool emojiMode)
+{
+	if (m_emojiMode == emojiMode)
+		return false;
+	m_emojiMode = emojiMode;
+	m_emojiPage = 0;
+	return true;
+}
+
+void TabletKeymap::nextEmojiPage()
+{
+	m_emojiPage = (m_emojiPage + 1) % emojiPageCount();
+}
+
+QString TabletKeymap::emojiText(UKey key)
+{
+	int i = emojiIndex(key);
+	return (i >= 0 && i < cEmojiCount) ? QString::fromUtf8(cEmojiKeys[i].utf8) : QString();
+}
+
+const char * TabletKeymap::emojiImage(UKey key)
+{
+	int i = emojiIndex(key);
+	return (i >= 0 && i < cEmojiCount) ? cEmojiKeys[i].image : NULL;
 }
 
 }; // namespace Tablet_Keyboard
