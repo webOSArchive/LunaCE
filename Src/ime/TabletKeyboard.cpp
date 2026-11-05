@@ -1549,7 +1549,8 @@ void TabletKeyboard::drawKeyCap(QPainter * painter, GlyphRenderer<GlyphSpec> & r
 	if (emojiImage)
 	{	// [CE] emoji are drawn from OpenMoji images: the system UI has no emoji font
 		int size = qMin(location.width(), location.height()) * 3 / 4;
-		const QPixmap & pix = emojiPixmap(emojiImage, size);
+		// the emoji key itself sits among the gray function keys: its smiley is gray too
+		const QPixmap & pix = emojiPixmap(emojiImage, size, key == cKey_EmojiToggle);
 		if (painter && !pix.isNull())
 		{
 			painter->drawPixmap(location.left() + (location.width() - pix.width()) / 2,
@@ -1998,16 +1999,40 @@ bool TabletKeyboard::idle()
 
 // [CE] ---------------------------------------------------------------- emoji images
 
-const QPixmap & TabletKeyboard::emojiPixmap(const char * image, int size)
+const QPixmap & TabletKeyboard::emojiPixmap(const char * image, int size, bool gray)
 {
-	QString cacheKey = QString("%1@%2").arg(image).arg(size);
+	QString cacheKey = QString("%1@%2%3").arg(image).arg(size).arg(gray ? "g" : "");
 	QHash<QString, QPixmap>::const_iterator it = m_emojiPixmaps.constFind(cacheKey);
 	if (it != m_emojiPixmaps.constEnd())
 		return it.value();
 	QPixmap pix;
 	QImage img(QString(cEmojiImageDir) + image + ".png");
 	if (!img.isNull() && size > 0)
-		pix = QPixmap::fromImage(img.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+	{
+		QImage scaled = img.scaled(size, size, Qt::KeepAspectRatio, Qt::SmoothTransformation)
+							.convertToFormat(QImage::Format_ARGB32);
+		if (gray)
+		{	// luminance, rescaled so the brightest part (the face) lands on the label gray
+			int top = 1;
+			for (int y = 0; y < scaled.height(); ++y)
+				for (int x = 0; x < scaled.width(); ++x)
+				{
+					QRgb p = scaled.pixel(x, y);
+					if (qAlpha(p) > 128 && qGray(p) > top)
+						top = qGray(p);
+				}
+			for (int y = 0; y < scaled.height(); ++y)
+			{
+				QRgb * line = reinterpret_cast<QRgb *>(scaled.scanLine(y));
+				for (int x = 0; x < scaled.width(); ++x)
+				{
+					int v = qMin(255, qGray(line[x]) * cFunctionColor.red() / top);
+					line[x] = qRgba(v, v, v, qAlpha(line[x]));
+				}
+			}
+		}
+		pix = QPixmap::fromImage(scaled);
+	}
 	else
 		g_warning("TabletKeyboard: no emoji image %s%s.png", cEmojiImageDir, image);
 	return m_emojiPixmaps.insert(cacheKey, pix).value();

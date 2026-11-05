@@ -177,8 +177,9 @@ protected:
 	}
 
 	QPixmap &	getKeyBackground(const QPoint & keyCoord, UKey key);
-	// [CE] an emoji key's OpenMoji image, scaled to fit size x size (cached); null if missing
-	const QPixmap &	emojiPixmap(const char * image, int size);
+	// [CE] an emoji key's OpenMoji image, scaled to fit size x size (cached); null if missing.
+	// gray: drawn in the function keys' label gray instead of colour (the emoji key itself)
+	const QPixmap &	emojiPixmap(const char * image, int size, bool gray = false);
 	QHash<QString, QPixmap>	m_emojiPixmaps;
 	void	draw9Tile(QPainter & painter, QRect & location, QPixmap & pixmap, bool pressed);
 	void	drawKeyCap(QPainter * painter, GlyphRenderer<GlyphSpec> & renderer, QRect location, const QPoint & keyCoord, UKey key, bool pressed);
