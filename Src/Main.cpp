@@ -27,6 +27,8 @@
 
 
 
+#include <errno.h>
+#include <sys/wait.h>
 #include "Common.h"
 
 #include "HostBase.h"
@@ -323,6 +325,53 @@ static void installInnerCrashHandler(int sig,
  * 
  * @param	sig		The signal to handle using {@link outerCrashHandler outerCrashHandler}
  */
+/*
+ * system(), for this process: the command is run with none of LunaSysMgr's own file
+ * descriptors.
+ *
+ * libc's system() leaves them all open in the child. LunaSysMgr's bus connections are among
+ * them, and the hub keeps a connection's service names for as long as any process has it open.
+ * So a command that outlived LunaSysMgr kept com.palm.applicationManager, com.palm.systemmanager
+ * and com.palm.lunastats registered to a dead process, and the LunaSysMgr upstart started next
+ * was refused them ("Attempted to register for a service name that already exists"). It ran
+ * without them, and without the stats handle crashed at the first app launch. The command that
+ * did it on every first boot is first use's own last act, `initctl emit first-use-finished &`,
+ * which lasts as long as the jobs that event starts: 14 crashes in a row after first use on
+ * webOS CE 600100 and 600103. Defined here, it takes the place of libc's for every call in
+ * LunaSysMgr.
+ */
+extern "C" int system(const char* command)
+{
+	if (!command)
+		return 1;
+
+	sigset_t block, old;
+	sigemptyset(&block);
+	sigaddset(&block, SIGCHLD);
+	pthread_sigmask(SIG_BLOCK, &block, &old);
+
+	pid_t pid = ::fork();
+	if (pid == 0) {
+		for (int fd = 3; fd < 1024; fd++)
+			::close(fd);
+		pthread_sigmask(SIG_SETMASK, &old, NULL);
+		::execl("/bin/sh", "sh", "-c", command, (char*) NULL);
+		::_exit(127);
+	}
+
+	int status = -1;
+	if (pid > 0) {
+		while (::waitpid(pid, &status, 0) < 0) {
+			if (errno != EINTR) {
+				status = -1;
+				break;
+			}
+		}
+	}
+	pthread_sigmask(SIG_SETMASK, &old, NULL);
+	return status;
+}
+
 static void installOuterCrashHandler(int sig)
 {
     struct sigaction crash_action;

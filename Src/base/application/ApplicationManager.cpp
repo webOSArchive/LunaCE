@@ -2383,8 +2383,12 @@ bool ApplicationManager::isTrustedInstallerApp (const std::string& app) const {
 	return false;
 }
 
+// A platform app: a com.palm.* id from one of the platform's vendors. webOS CE's apps say
+// "webOS Archive" where HP's said "HP"; without it they are taken for user-installed apps (the
+// launcher files them under Downloads, and they show their own version, not the platform's).
 bool ApplicationManager::isTrustedPalmApp(const ApplicationDescription* appDesc) const {
-	return (appDesc->id().find("com.palm.") == 0 && ((appDesc->vendorName().find("Palm") == 0) || (appDesc->vendorName().find("HP") == 0))) ? true : false;
+	return (appDesc->id().find("com.palm.") == 0 && ((appDesc->vendorName().find("Palm") == 0) || (appDesc->vendorName().find("HP") == 0)
+			|| (appDesc->vendorName().find("webOS Archive") == 0))) ? true : false;
 }
 
 bool ApplicationManager::isTrustedPalmApp(const std::string& appId)

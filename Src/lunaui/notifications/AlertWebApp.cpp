@@ -98,7 +98,7 @@ void AlertWebApp::startPowerdActivity()
 		g_message ("%s: starting powerd activity for %s", __PRETTY_FUNCTION__, activityId);
 		gchar* params = g_strdup_printf("{\"id\": \"%s\", \"duration_ms\": %d}", activityId, kAlertActivityDuration);
 
-		bool ret = LSCall(lshandle, "palm://com.palm.power/com/palm/power/activityStart",
+		bool ret = lshandle && LSCall(lshandle, "palm://com.palm.power/com/palm/power/activityStart",
 				params, NULL, NULL, NULL, &lsError);
 
 		g_free (activityId);
@@ -124,7 +124,7 @@ void AlertWebApp::stopPowerdActivity() {
 		g_message ("%s: stopping powerd activity for %s", __PRETTY_FUNCTION__, activityId);
 		gchar* params = g_strdup_printf("{\"id\": \"%s\"}", activityId);
 
-		bool ret = LSCall(lshandle, "palm://com.palm.power/com/palm/power/activityEnd",
+		bool ret = lshandle && LSCall(lshandle, "palm://com.palm.power/com/palm/power/activityEnd",
 				params, NULL, NULL, NULL, &lsError);
 
 		g_free (activityId);

@@ -256,6 +256,12 @@ WebAppManager::WebAppManager()
 	, m_disableAppCaching(false)
 	, m_inSimulatedMouseEvent(false)
 {
+    // Null until com.palm.lunastats is registered (registerStatsService): they were left
+    // uninitialised, and a failed registration then crashed the first app launch.
+    m_service = NULL;
+    m_servicePublic = NULL;
+    m_servicePrivate = NULL;
+
     static const char *argv[] = { "./WebAppManager", NULL };
     static int argc = 1;
 
@@ -774,6 +780,81 @@ std::list<const ProcessBase*> WebAppManager::runningApps(Window::Type winType)
 	return apps;
 }
 
+/*
+ * Registers com.palm.lunastats and attaches it to the main loop; false when the name can't be
+ * had yet.
+ *
+ * The hub refuses a name that another process still holds ("Attempted to register for a
+ * service name that already exists"). That happens when LunaSysMgr is started again while the
+ * last WebAppMgr hasn't let go of the bus: seen on a TouchPad after first use, webOS CE 600103,
+ * where each start failed here, left the handles as they were (uninitialised), and crashed in
+ * reportAppLaunched at the first app launch, 14 times in a row. The handles are now null until
+ * this succeeds, every user of them checks, and the caller tries again every half second.
+ */
+bool WebAppManager::registerStatsService()
+{
+	LSError lserror;
+	LSErrorInit(&lserror);
+	LSPalmService* service = NULL;
+
+	if (!LSRegisterPalmService("com.palm.lunastats", &service, &lserror)) {
+		static int failures = 0;
+		if (failures++ % 20 == 0)
+			g_critical("%s: com.palm.lunastats not registered (try %d), trying again: %s",
+					   __PRETTY_FUNCTION__, failures, lserror.message ? lserror.message : "no reason given");
+		LSErrorFree(&lserror);
+		return false;
+	}
+
+	bool r;
+	m_service = service;
+
+	r = LSPalmServiceRegisterCategory(m_service, "/",
+									  sStatsMethodsPublic,
+									  sStatsMethodsPrivate,
+									  NULL, NULL, &lserror);
+	if (!r)
+		goto Error;
+
+	m_servicePublic = LSPalmServiceGetPrivateConnection(m_service);
+	m_servicePrivate = LSPalmServiceGetPrivateConnection(m_service);
+
+	r = LSGmainAttachPalmService(m_service, mainLoop(), &lserror);
+	if (!r)
+		goto Error;
+
+	r = LSCall(m_servicePrivate, "palm://com.palm.lunabus/signal/registerServerStatus",
+			   "{\"serviceName\":\"com.palm.systemservice\"}",
+			   systemServiceConnectCallback, NULL, NULL, &lserror);
+	if (!r)
+		goto Error;
+
+	r = LSCall(m_servicePrivate, "palm://com.palm.bus/signal/registerServerStatus",
+			   "{\"serviceName\":\"com.palm.display\"}",
+			   displayManagerConnectCallback, m_servicePrivate, NULL, &lserror);
+	if (!r)
+		goto Error;
+
+Error:
+
+	if (!r) {
+		g_critical("%s: com.palm.lunastats registered, but its setup failed: %s",
+				   __PRETTY_FUNCTION__, lserror.message ? lserror.message : "no reason given");
+		LSErrorFree(&lserror);
+	}
+	return true;
+}
+
+gboolean WebAppManager::retryStatsService(gpointer)
+{
+	static int tries = 1;
+	tries++;
+	if (!sInstance || !sInstance->registerStatsService())
+		return TRUE;
+	g_critical("%s: com.palm.lunastats registered on try %d", __PRETTY_FUNCTION__, tries);
+	return FALSE;
+}
+
 void WebAppManager::threadStarting()
 {
 	static bool initialized = false;
@@ -812,50 +893,13 @@ void WebAppManager::threadStarting()
 		MemoryWatcher::instance()->signalMemoryStateChanged.
 			connect(this, &WebAppManager::slotMemoryStateChanged);
 
-		// Set the extra HTTP header from the carrier
-		{
-			LSError lserror;
-			LSErrorInit(&lserror);
-
-			if (LSRegisterPalmService("com.palm.lunastats", &m_service, &lserror) ) {
-
-				bool r;
-
-				r = LSPalmServiceRegisterCategory(m_service, "/",
-												  sStatsMethodsPublic,
-												  sStatsMethodsPrivate,
-												  NULL, NULL, &lserror);
-				if (!r)
-					goto Error;
-
-				m_servicePublic = LSPalmServiceGetPrivateConnection(m_service);
-				m_servicePrivate = LSPalmServiceGetPrivateConnection(m_service);
-				
-
-				r = LSGmainAttachPalmService(m_service, mainLoop(), &lserror);
-				if (!r)
-					goto Error;
-
-				r = LSCall(m_servicePrivate, "palm://com.palm.lunabus/signal/registerServerStatus",
-						   "{\"serviceName\":\"com.palm.systemservice\"}",
-						   systemServiceConnectCallback, NULL, NULL, &lserror);
-				if (!r)
-					goto Error;
-
-				r = LSCall(m_servicePrivate, "palm://com.palm.bus/signal/registerServerStatus",
-						   "{\"serviceName\":\"com.palm.display\"}",
-						   displayManagerConnectCallback, m_servicePrivate, NULL, &lserror);
-				if (!r)
-					goto Error;
-				
-			Error:
-
-				if (!r) {
-					LSErrorPrint(&lserror, stderr);
-					LSErrorFree(&lserror);
-				}
-			}
-
+		// The stats service (com.palm.lunastats): also the handle this process makes its own
+		// bus calls with. Tried again until it is had (registerStatsService).
+		if (!registerStatsService()) {
+			GSource* src = g_timeout_source_new(500);
+			g_source_set_callback(src, retryStatsService, NULL, NULL);
+			g_source_attach(src, g_main_loop_get_context(mainLoop()));
+			g_source_unref(src);
 		}
 	}
 
@@ -1585,7 +1629,7 @@ void WebAppManager::slotMemoryStateChanged(MemoryWatcher::MemState state)
 	json_object* reply = json_object_new_object();
 	json_object_object_add(reply, "state", json_object_new_string(memStateStr.c_str()));
 		
-	if (!LSSubscriptionPost(m_servicePublic, "/", "getMemoryStatus",
+	if (m_servicePublic && !LSSubscriptionPost(m_servicePublic, "/", "getMemoryStatus",
 							json_object_to_json_string(reply), &lsError))
 		LSErrorFree(&lsError);
 	
@@ -1770,7 +1814,8 @@ gboolean PrvPostLunaStats(gpointer ctxt)
 
 	jsonStr += " }";
 
-	if (!LSSubscriptionPost(WebAppManager::instance()->getStatsServiceHandle(),
+	if (WebAppManager::instance()->getStatsServiceHandle() &&
+		!LSSubscriptionPost(WebAppManager::instance()->getStatsServiceHandle(),
 							"/", "getStats", jsonStr.c_str(), &lsError))
 		LSErrorFree (&lsError);	
 
@@ -2111,7 +2156,8 @@ void WebAppManager::mimeHandoffUrl(const char* mimeType, const char* url, const 
 	LSError lsError;
 	LSErrorInit(&lsError);
 
-	if (!LSCallFromApplication(m_servicePrivate, "palm://com.palm.applicationManager/open",
+	if (!m_servicePrivate ||
+	    !LSCallFromApplication(m_servicePrivate, "palm://com.palm.applicationManager/open",
 	                           json_object_to_json_string(json), callerId,
 	                           NULL, NULL, NULL, &lsError)) {
 		g_critical("%s:%d, Failed in LSCall to applicationManager/open: %s",
@@ -2592,7 +2638,7 @@ void WebAppManager::startGcPowerdActivity()
 	gchar* params = g_strdup_printf("{\"id\": \"%s\", \"duration_ms\": %d}",
 									m_gcPowerdActivityId.c_str(), kGcPowerdActivityDuration);	
 	
-	bool ret = LSCall(m_servicePrivate, "palm://com.palm.power/com/palm/power/activityStart",
+	bool ret = m_servicePrivate && LSCall(m_servicePrivate, "palm://com.palm.power/com/palm/power/activityStart",
 					  params, NULL, NULL, NULL, &lsError);
 	g_free(params);
 
@@ -2623,7 +2669,7 @@ void WebAppManager::stopGcPowerdActivity()
 
 	gchar* params = g_strdup_printf("{\"id\": \"%s\"}", m_gcPowerdActivityId.c_str());
 	
-	bool ret = LSCall(m_servicePrivate, "palm://com.palm.power/com/palm/power/activityEnd",
+	bool ret = m_servicePrivate && LSCall(m_servicePrivate, "palm://com.palm.power/com/palm/power/activityEnd",
 					  params, NULL, NULL, NULL, &lsError);
 	g_free(params);
 	m_gcPowerdActivityId = std::string();    

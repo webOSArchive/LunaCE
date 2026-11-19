@@ -900,6 +900,8 @@ private:
 	LSPalmService* m_service;
 	LSHandle* m_servicePublic;
 	LSHandle* m_servicePrivate;
+	bool registerStatsService();
+	static gboolean retryStatsService(gpointer);
 	WebAppBase* m_imePopupApp;
 	WebKitEventListener* m_wkEventListener;
 	PageList m_pagesToDeleteList;
