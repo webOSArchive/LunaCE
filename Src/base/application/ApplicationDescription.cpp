@@ -1143,6 +1143,9 @@ bool ApplicationDescription::securityChecksVerified()
         // we have some known exceptions...
 		if ((m_id == "com.palm.app.bluetooth" && m_folderPath == "/usr/palm/applications/com.palm.app.bluetoothtab") ||
 				(m_id == "com.palm.calculator" && m_folderPath == "/media/cryptofs/apps/usr/palm/applications/com.palm.app.calculator") ||
+				// webOS CE bakes Calculator into the rootfs, in a folder of the same name as
+				// the stock preload's. Without this it is on the launcher and does not open.
+				(m_id == "com.palm.calculator" && m_folderPath == "/usr/palm/applications/com.palm.app.calculator") ||
 				(m_id == "com.palm.mojo-systemui" && m_folderPath == "/usr/palm/applications/mojo-systemui"))
         {
             return true;
