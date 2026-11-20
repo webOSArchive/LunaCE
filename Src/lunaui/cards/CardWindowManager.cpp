@@ -19,6 +19,7 @@
 
 
 
+#include <errno.h>
 #include "Common.h"
 
 #include "CardWindowManager.h"
@@ -1304,7 +1305,14 @@ void CardWindowManager::markFirstCardDone()
     //if (Settings::LunaSettings()->uiType == Settings::UI_MINIMAL) {
     g_mkdir_with_parents(Settings::LunaSettings()->lunaPrefsPath.c_str(), 0755);
     FILE* f = fopen(Settings::LunaSettings()->firstCardLaunch.c_str(), "w");
-    fclose(f);
+    if (f) {
+        fclose(f);
+    } else {
+        // Seen on a TouchPad updated to webOS CE 3.2.0: the open failed and fclose(NULL)
+        // took LunaSysMgr down when the first card was minimized.
+        g_warning("[%s]: could not write %s: %s", __PRETTY_FUNCTION__,
+                  Settings::LunaSettings()->firstCardLaunch.c_str(), g_strerror(errno));
+    }
     //}
 }
 
