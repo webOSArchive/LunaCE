@@ -104,6 +104,12 @@ VPATH += ./Src/lunaui/launcher/test
 
 INCLUDEPATH = $$VPATH
 
+# Rebuild an object when a header it includes changes. Without DEPENDPATH, qmake's
+# Makefile ties each .o to its own .cpp/.h only: a field added to Settings.h rebuilt
+# Settings.o but left CardWebApp.o reading the old offsets, and every phone app
+# crashed LunaSysMgr (webOS-Community-Edition issue #16).
+DEPENDPATH = $$INCLUDEPATH
+
 DEFINES += ENABLE_PIRANHA QT_WEBOS
 
 # For shipping version of the code, as opposed to a development build. Set this to 1 late in the process...

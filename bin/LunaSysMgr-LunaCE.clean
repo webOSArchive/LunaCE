@@ -1,0 +1,4 @@
+# Clean builds made by cross-build/ship.sh 2026-11-23T13:04:01Z
+# from v3.0.5-452-g299295e-dirty (dirty = the commit these binaries go in with)
+bbf947306b6124eb33f72f6a5f6d66543294abaec236e1d929405ac4db39c6fb  LunaSysMgr-LunaCE-topaz
+6b64d7ac296482ca999c8b4b133cc2c4443e803d22f112c709aee7b09c45a8cd  LunaSysMgr-LunaCE-opal

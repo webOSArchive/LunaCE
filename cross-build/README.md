@@ -5,6 +5,17 @@ Scripts for cross-compiling LunaSysMgr for the TouchPad (`topaz`) and TouchPad G
 (`opal`), against webOS 3.0.5.
 
 * `build.sh` — run qmake and make for a given MACHINE
+* `ship.sh` — refresh `bin/` from a **clean** build of both machines and record the
+  binaries' sha256 in `bin/LunaSysMgr-LunaCE.clean`. Use it, never `build.sh` plus a copy,
+  for anything that ships: the webOS CE bake refuses a LunaSysMgr without a record
+* `compare-builds.py SHIPPED CLEAN` — check a shipped binary against a clean build of
+  the same commit, made in a separate worktree. Every instruction must match; only
+  addresses may move. A function that differs was compiled against old headers.
+
+An incremental build once shipped objects compiled against an old `Settings` layout:
+every phone app crashed LunaSysMgr (webOS-Community-Edition issue #16). `sysmgr.pro`
+now sets `DEPENDPATH`, so make rebuilds what a header change touches, but releases go
+through `ship.sh` regardless.
 
 The repository holds only the source. Everything the build needs besides that — the
 extracted device rootfs, the WOCE headers, prebuilt host Qt tools, object files — is
