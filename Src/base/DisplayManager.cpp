@@ -236,10 +236,7 @@ DisplayManager::DisplayManager()
     , m_power(new Timer<DisplayManager>(HostBase::instance()->masterTimer(), this, &DisplayManager::power))
     , m_slider(new Timer<DisplayManager>(HostBase::instance()->masterTimer(), this, &DisplayManager::slider))
     , m_alertTimer(new Timer<DisplayManager>(HostBase::instance()->masterTimer(), this, &DisplayManager::alertTimerCallback))
-    // The brightness until the user sets one (a saved "maximumBrightness" preference, read
-    // below, replaces it): 40 as it always was, unless luna.conf's [Display] DefaultBrightness
-    // says otherwise. webOS CE says 100: a TouchPad's backlight has dimmed with age.
-    , m_maxBrightness(qBound(MINIMUM_ON_BRIGHTNESS, Settings::LunaSettings()->displayDefaultBrightness, 100))
+    , m_maxBrightness(DEFAULT_BRIGHTNESS)
     , m_currentState (NULL)
     , m_displayStates (NULL)
     , m_lockState(DisplayLockInvalid)

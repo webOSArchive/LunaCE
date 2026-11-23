@@ -119,7 +119,6 @@ Settings::Settings()
 	, displayHeight(320)
 	, displayNumBuffers(3)
 	, ledPulseMaxBrightness (100)
-	, displayDefaultBrightness (40)
 	, ledPulseDarkBrightness (50)
 	, enableAls(true)
 	, disableLocking(false)
@@ -418,7 +417,6 @@ void Settings::load(const char* settingsFile)
     KEY_INTEGER( "CoreNavi", "HomeDoubleClickDuration", homeDoubleClickDuration);
 
 	KEY_INTEGER( "Display", "BrightnessOutdoorScale", backlightOutdoorScale);
-	KEY_INTEGER( "Display", "DefaultBrightness", displayDefaultBrightness);
 	KEY_INTEGER( "Display", "BrightnessDimScale", backlightDimScale);
 	KEY_INTEGER( "Display", "BrightnessDarkScale", backlightDarkScale);
 

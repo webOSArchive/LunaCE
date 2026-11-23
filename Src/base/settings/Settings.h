@@ -97,7 +97,6 @@ public:
 
 	// parameters to control led pulsing
 	int             ledPulseMaxBrightness;
-	int             displayDefaultBrightness;   // [Display] DefaultBrightness: the brightness until the user sets one
 	int             ledPulseDarkBrightness;
 	
 	// ALS
